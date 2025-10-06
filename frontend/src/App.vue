@@ -1,113 +1,81 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref } from 'vue';
+import SourceList from './components/SourceList.vue';
+import ArticleList from './components/ArticleList.vue';
+import ArticleView from './components/ArticleView.vue';
 
-const feedUrl = ref('');
 const articles = ref([]);
+const selectedArticle = ref(null);
 
-const fetchArticles = async () => {
+// This function is called when a source is selected in the SourceList component
+const handleSourceSelected = async (source) => {
+  if (!source) {
+    articles.value = [];
+    selectedArticle.value = null;
+    return;
+  }
   try {
-    const response = await fetch('/api/articles');
+    const response = await fetch(`/api/sources/${source.id}/articles`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch articles for the source');
+    }
     articles.value = await response.json();
+    selectedArticle.value = null; // Reset article view when a new source is selected
   } catch (error) {
     console.error('Error fetching articles:', error);
+    articles.value = []; // Clear articles on error
   }
 };
 
-const addFeed = async () => {
-  if (!feedUrl.value) return;
-  try {
-    await fetch('/api/feeds', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ url: feedUrl.value }),
-    });
-    feedUrl.value = '';
-    fetchArticles(); // Refresh the list
-  } catch (error) {
-    console.error('Error adding feed:', error);
-  }
+// This function is called when an article is selected in the ArticleList component
+const handleArticleSelected = (article) => {
+  selectedArticle.value = article;
 };
-
-onMounted(fetchArticles);
-
 </script>
 
 <template>
-  <div id="app">
-    <header>
-      <h1>RSS Reader</h1>
-    </header>
-    <main>
-      <div class="feed-form">
-        <input type="text" v-model="feedUrl" @keyup.enter="addFeed" placeholder="Enter RSS feed URL">
-        <button @click="addFeed">Add Feed</button>
-      </div>
-      <div class="articles-list">
-        <div v-if="articles.length === 0">No articles found. Add a feed to get started!</div>
-        <div v-for="article in articles" :key="article.guid" class="article-item">
-          <h2><a :href="article.url" target="_blank">{{ article.title }}</a></h2>
-          <p v-html="article.description"></p>
-        </div>
-      </div>
-    </main>
+  <div id="app-container">
+    <div class="left-pane">
+      <SourceList @source-selected="handleSourceSelected" />
+    </div>
+    <div class="center-pane">
+      <ArticleList :articles="articles" @article-selected="handleArticleSelected" />
+    </div>
+    <div class="right-pane">
+      <ArticleView :article="selectedArticle" />
+    </div>
   </div>
 </template>
 
-<style scoped>
-#app {
-  font-family: Avenir, Helvetica, Arial, sans-serif;
+<style>
+/* Global styles */
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  text-align: center;
   color: #2c3e50;
-  margin-top: 60px;
 }
 
-header {
-  margin-bottom: 40px;
+#app-container {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
 }
 
-.feed-form {
-  margin-bottom: 40px;
+.left-pane {
+  flex: 0 0 280px; /* Fixed width for the source list */
+  min-width: 220px;
 }
 
-.feed-form input {
-  padding: 10px;
-  width: 300px;
-  margin-right: 10px;
+.center-pane {
+  flex: 0 0 350px; /* Fixed width for the article list */
+  min-width: 280px;
 }
 
-.feed-form button {
-  padding: 10px 20px;
-}
-
-.articles-list {
-  max-width: 800px;
-  margin: 0 auto;
-  text-align: left;
-}
-
-.article-item {
-  border-bottom: 1px solid #eee;
-  padding: 20px 0;
-}
-
-.article-item:last-child {
-  border-bottom: none;
-}
-
-.article-item h2 {
-  margin: 0 0 10px;
-}
-
-.article-item h2 a {
-  color: #2c3e50;
-  text-decoration: none;
-}
-
-.article-item h2 a:hover {
-  text-decoration: underline;
+.right-pane {
+  flex: 1; /* Takes up the remaining space */
+  min-width: 400px;
 }
 </style>
