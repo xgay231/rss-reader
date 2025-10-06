@@ -15,7 +15,7 @@ const articleContent = computed(() => {
     return {
       title: '',
       url: '',
-      description: '<p>Select an article to read its content.</p>',
+      content: '<p>Select an article to read its content.</p>',
     };
   }
   return props.article;
@@ -30,8 +30,8 @@ const articleContent = computed(() => {
           {{ articleContent.title }}
         </a>
       </h1>
-      <!-- Use v-html to render the HTML content of the description -->
-      <div class="article-content" v-html="articleContent.description"></div>
+      <!-- Use v-html to render the HTML content of the article -->
+      <div class="article-content" v-html="articleContent.content"></div>
     </div>
     <div v-else class="no-article-selected">
       <p>Select an article from the list to read it here.</p>

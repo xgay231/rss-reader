@@ -30,6 +30,7 @@ type Article struct {
 	Title       string             `json:"title" bson:"title"`
 	URL         string             `json:"url" bson:"url"`
 	Description string             `json:"description" bson:"description"`
+	Content     string             `json:"content" bson:"content"`
 }
 
 func updateFeeds() {
@@ -63,12 +64,17 @@ func updateFeeds() {
 
 			if err == mongo.ErrNoDocuments {
 				// Article is new, add it to the list
+				content := item.Content
+				if content == "" {
+					content = item.Description
+				}
 				article := Article{
 					SourceID:    source.ID,
 					GUID:        item.GUID,
 					Title:       item.Title,
 					URL:         item.Link,
 					Description: item.Description,
+					Content:     content,
 				}
 				newArticles = append(newArticles, article)
 			} else if err != nil {
@@ -160,12 +166,17 @@ func main() {
 
 				var articles []interface{}
 				for _, item := range feed.Items {
+					content := item.Content
+					if content == "" {
+						content = item.Description
+					}
 					article := Article{
 						SourceID:    sourceID,
 						GUID:        item.GUID,
 						Title:       item.Title,
 						URL:         item.Link,
 						Description: item.Description,
+						Content:     content,
 					}
 					articles = append(articles, article)
 				}
