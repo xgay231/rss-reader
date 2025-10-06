@@ -3,13 +3,16 @@ package main
 import (
 	"context"
 	"log"
+	"time"
+
+	"rss-reader/backend/db"
 
 	"github.com/gin-gonic/gin"
 	"github.com/mmcdole/gofeed"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	"rss-reader/backend/db"
 )
 
 // FeedSource represents an RSS feed source
@@ -29,8 +32,78 @@ type Article struct {
 	Description string             `json:"description" bson:"description"`
 }
 
+func updateFeeds() {
+	log.Println("Starting feed update process...")
+	var sources []FeedSource
+	ctx := context.Background()
+
+	cursor, err := db.SourceCollection.Find(ctx, bson.M{})
+	if err != nil {
+		log.Printf("Failed to get sources from DB: %v", err)
+		return
+	}
+	if err = cursor.All(ctx, &sources); err != nil {
+		log.Printf("Failed to decode sources: %v", err)
+		return
+	}
+
+	fp := gofeed.NewParser()
+	for _, source := range sources {
+		feed, err := fp.ParseURL(source.URL)
+		if err != nil {
+			log.Printf("Failed to parse feed %s: %v", source.URL, err)
+			continue // Move to the next source
+		}
+
+		var newArticles []interface{}
+		for _, item := range feed.Items {
+			// Check if article already exists
+			filter := bson.M{"guid": item.GUID, "sourceId": source.ID}
+			err := db.ArticleCollection.FindOne(ctx, filter).Err()
+
+			if err == mongo.ErrNoDocuments {
+				// Article is new, add it to the list
+				article := Article{
+					SourceID:    source.ID,
+					GUID:        item.GUID,
+					Title:       item.Title,
+					URL:         item.Link,
+					Description: item.Description,
+				}
+				newArticles = append(newArticles, article)
+			} else if err != nil {
+				// An actual error occurred during the check
+				log.Printf("Error checking for article existence %s: %v", item.GUID, err)
+			}
+		}
+
+		if len(newArticles) > 0 {
+			opts := options.InsertMany().SetOrdered(false)
+			_, err := db.ArticleCollection.InsertMany(ctx, newArticles, opts)
+			if err != nil {
+				log.Printf("Failed to insert %d new articles for source %s: %v", len(newArticles), source.Name, err)
+			} else {
+				log.Printf("Inserted %d new articles for source %s", len(newArticles), source.Name)
+			}
+		}
+	}
+	log.Println("Feed update process finished.")
+}
+
 func main() {
 	db.ConnectDatabase() // Connect to the database
+
+	// Start the background worker
+	go func() {
+		// Run once on startup
+		updateFeeds()
+
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			updateFeeds()
+		}
+	}()
 
 	router := gin.Default()
 
