@@ -1,5 +1,6 @@
 <script setup>
 import { defineProps, computed } from 'vue';
+import { marked } from 'marked';
 
 // This component receives the selected article as a prop
 const props = defineProps({
@@ -9,16 +10,13 @@ const props = defineProps({
   },
 });
 
-// A computed property to safely access article properties
-const articleContent = computed(() => {
-  if (!props.article) {
-    return {
-      title: '',
-      url: '',
-      content: '<p>Select an article to read its content.</p>',
-    };
+// A computed property to parse Markdown content into HTML
+const renderedContent = computed(() => {
+  if (props.article && props.article.content) {
+    // Use marked to parse the content
+    return marked.parse(props.article.content);
   }
-  return props.article;
+  return '';
 });
 </script>
 
@@ -26,12 +24,12 @@ const articleContent = computed(() => {
   <div class="article-view-container">
     <div v-if="article">
       <h1>
-        <a :href="articleContent.url" target="_blank" rel="noopener noreferrer">
-          {{ articleContent.title }}
+        <a :href="article.url" target="_blank" rel="noopener noreferrer">
+          {{ article.title }}
         </a>
       </h1>
-      <!-- Use v-html to render the HTML content of the article -->
-      <div class="article-content" v-html="articleContent.content"></div>
+      <!-- Use v-html to render the parsed HTML content -->
+      <div class="article-content" v-html="renderedContent"></div>
     </div>
     <div v-else class="no-article-selected">
       <p>Select an article from the list to read it here.</p>
