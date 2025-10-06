@@ -1,6 +1,7 @@
 <script setup>
-import { defineProps, computed } from 'vue';
+import { defineProps, computed, ref, onMounted } from 'vue';
 import { marked } from 'marked';
+import { loadModel, summarizeText } from '../services/summarizer.js';
 
 // This component receives the selected article as a prop
 const props = defineProps({
@@ -10,14 +11,50 @@ const props = defineProps({
   },
 });
 
+const summary = ref('');
+const isLoadingSummary = ref(false);
+const summaryError = ref('');
+
+// Load the model when the component is mounted
+onMounted(async () => {
+  try {
+    await loadModel();
+  } catch (error) {
+    summaryError.value = 'Failed to load the summarization model.';
+    console.error(error);
+  }
+});
+
 // A computed property to parse Markdown content into HTML
 const renderedContent = computed(() => {
   if (props.article && props.article.content) {
-    // Use marked to parse the content
     return marked.parse(props.article.content);
   }
   return '';
 });
+
+// Function to generate the summary
+const generateSummary = async () => {
+  if (!props.article || !props.article.content) return;
+
+  isLoadingSummary.value = true;
+  summaryError.value = '';
+  summary.value = '';
+
+  try {
+    // We need to get the plain text from the HTML content for an accurate summary
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = props.article.content;
+    const textContent = tempDiv.textContent || tempDiv.innerText || '';
+    
+    summary.value = await summarizeText(textContent);
+  } catch (error) {
+    summaryError.value = 'Failed to generate summary.';
+    console.error(error);
+  } finally {
+    isLoadingSummary.value = false;
+  }
+};
 </script>
 
 <template>
@@ -28,6 +65,20 @@ const renderedContent = computed(() => {
           {{ article.title }}
         </a>
       </h1>
+
+      <div class="summary-section">
+        <button @click="generateSummary" :disabled="isLoadingSummary">
+          {{ isLoadingSummary ? 'Generating...' : 'Generate Summary' }}
+        </button>
+        <div v-if="summary" class="summary-content">
+          <h3>Summary</h3>
+          <p>{{ summary }}</p>
+        </div>
+        <div v-if="summaryError" class="summary-error">
+          <p>{{ summaryError }}</p>
+        </div>
+      </div>
+
       <!-- Use v-html to render the parsed HTML content -->
       <div class="article-content" v-html="renderedContent"></div>
     </div>
@@ -89,5 +140,44 @@ h1 a:hover {
   max-width: 100%;
   height: auto;
   border-radius: 4px;
+}
+
+.summary-section {
+  margin-bottom: 2rem;
+  padding: 1rem;
+  background-color: var(--color-bg-pane);
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+}
+
+.summary-section button {
+  background-color: var(--color-accent);
+  color: var(--color-accent-text);
+  border: none;
+  margin-bottom: 1rem;
+}
+
+.summary-section button:hover {
+  background-color: var(--color-accent-hover);
+}
+
+.summary-section button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.summary-content h3 {
+  margin-top: 0;
+  font-size: 1.1rem;
+  color: var(--color-text-primary);
+}
+
+.summary-content p {
+  font-style: italic;
+  color: var(--color-text-secondary);
+}
+
+.summary-error {
+  color: var(--color-danger);
 }
 </style>
