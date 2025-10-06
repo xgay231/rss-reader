@@ -39,17 +39,18 @@ const selectArticle = (article) => {
 <style scoped>
 .article-list-container {
   padding: 1rem;
-  border-right: 1px solid #ccc;
+  border-right: 1px solid var(--color-border);
   height: 100vh;
   overflow-y: auto;
+  background-color: var(--color-bg-pane);
 }
 
 h2 {
   margin-top: 0;
   font-size: 1.2rem;
-  color: #333;
+  color: var(--color-text-primary);
   padding-bottom: 0.5rem;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--color-border);
 }
 
 ul {
@@ -60,25 +61,25 @@ ul {
 
 li {
   padding: 1rem;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--color-border);
   cursor: pointer;
   transition: background-color 0.2s;
 }
 
 li:hover {
-  background-color: #f0f0f0;
+  background-color: var(--color-bg-item-hover);
 }
 
 h3 {
   margin: 0 0 0.5rem 0;
   font-size: 1rem;
-  color: #0056b3;
+  color: var(--color-accent-hover);
 }
 
 p {
   margin: 0;
   font-size: 0.9rem;
-  color: #666;
+  color: var(--color-text-secondary);
   /* Truncate long descriptions */
   white-space: nowrap;
   overflow: hidden;
@@ -90,6 +91,6 @@ p {
   justify-content: center;
   align-items: center;
   height: 80%;
-  color: #888;
+  color: var(--color-text-secondary);
 }
 </style>

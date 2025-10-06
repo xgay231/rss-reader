@@ -42,6 +42,7 @@ const renderedContent = computed(() => {
   padding: 2rem;
   height: 100vh;
   overflow-y: auto;
+  background-color: var(--color-background);
 }
 
 .no-article-selected {
@@ -49,7 +50,7 @@ const renderedContent = computed(() => {
   justify-content: center;
   align-items: center;
   height: 80%;
-  color: #888;
+  color: var(--color-text-secondary);
   font-size: 1.2rem;
 }
 
@@ -60,19 +61,19 @@ h1 {
 }
 
 h1 a {
-  color: #333;
+  color: var(--color-text-primary);
   text-decoration: none;
   transition: color 0.2s;
 }
 
 h1 a:hover {
-  color: #007bff;
+  color: var(--color-accent);
 }
 
 .article-content {
   line-height: 1.6;
   font-size: 1rem;
-  color: #444;
+  color: var(--color-text-primary);
 }
 
 /* Basic styling for content that comes from v-html */
@@ -81,7 +82,7 @@ h1 a:hover {
 }
 
 .article-content ::v-deep(a) {
-  color: #007bff;
+  color: var(--color-accent);
 }
 
 .article-content ::v-deep(img) {

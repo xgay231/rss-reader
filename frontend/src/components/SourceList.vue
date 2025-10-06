@@ -112,16 +112,16 @@ const deleteSource = async (sourceId, event) => {
 <style scoped>
 .source-list-container {
   padding: 1rem;
-  border-right: 1px solid #ccc;
+  border-right: 1px solid var(--color-border);
   height: 100vh;
   overflow-y: auto;
-  background-color: #f7f7f7;
+  background-color: var(--color-bg-pane);
 }
 
 h2 {
   margin-top: 0;
   font-size: 1.2rem;
-  color: #333;
+  color: var(--color-text-primary);
 }
 
 .add-source-form {
@@ -132,22 +132,22 @@ h2 {
 input[type="text"] {
   flex-grow: 1;
   padding: 0.5rem;
-  border: 1px solid #ccc;
+  border: 1px solid var(--color-border);
   border-radius: 4px 0 0 4px;
 }
 
 button {
   padding: 0.5rem 1rem;
-  border: 1px solid #007bff;
-  background-color: #007bff;
-  color: white;
+  border: 1px solid var(--color-accent);
+  background-color: var(--color-accent);
+  color: var(--color-accent-text);
   border-radius: 0 4px 4px 0;
   cursor: pointer;
   transition: background-color 0.2s;
 }
 
 button:hover {
-  background-color: #0056b3;
+  background-color: var(--color-accent-hover);
 }
 
 ul {
@@ -161,24 +161,24 @@ li {
   justify-content: space-between;
   align-items: center;
   padding: 0.75rem;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--color-border);
   cursor: pointer;
   transition: background-color 0.2s;
 }
 
 li:hover {
-  background-color: #e9e9e9;
+  background-color: var(--color-bg-item-hover);
 }
 
 li.selected {
-  background-color: #dceaf7;
+  background-color: var(--color-bg-item-selected);
   font-weight: bold;
 }
 
 .delete-btn {
   background: none;
   border: none;
-  color: #ff4d4d;
+  color: var(--color-danger);
   font-size: 1.2rem;
   cursor: pointer;
   padding: 0 0.5rem;
