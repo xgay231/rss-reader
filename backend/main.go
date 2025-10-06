@@ -3,19 +3,30 @@ package main
 import (
 	"context"
 	"log"
+
 	"github.com/gin-gonic/gin"
 	"github.com/mmcdole/gofeed"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"rss-reader/backend/db"
 )
 
+// FeedSource represents an RSS feed source
+type FeedSource struct {
+	ID   primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	Name string             `json:"name" bson:"name"`
+	URL  string             `json:"url" bson:"url"`
+}
+
 // Article represents a single RSS feed item
 type Article struct {
-	GUID        string `json:"guid" bson:"_id,omitempty"`
-	Title       string `json:"title" bson:"title"`
-	URL         string `json:"url" bson:"url"`
-	Description string `json:"description" bson:"description"`
+	ID          primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	SourceID    primitive.ObjectID `json:"sourceId" bson:"sourceId"`
+	GUID        string             `json:"guid" bson:"guid"`
+	Title       string             `json:"title" bson:"title"`
+	URL         string             `json:"url" bson:"url"`
+	Description string             `json:"description" bson:"description"`
 }
 
 func main() {
@@ -33,66 +44,161 @@ func main() {
 	// API routes
 	api := router.Group("/api")
 	{
-		api.POST("/feeds", func(c *gin.Context) {
-			var json struct {
-				URL string `json:"url" binding:"required"`
-			}
-
-			if err := c.ShouldBindJSON(&json); err != nil {
-				c.JSON(400, gin.H{"error": err.Error()})
-				return
-			}
-
-			fp := gofeed.NewParser()
-			feed, err := fp.ParseURL(json.URL)
-			if err != nil {
-				c.JSON(500, gin.H{"error": "Failed to parse feed"})
-				return
-			}
-
-			var articles []interface{}
-			for _, item := range feed.Items {
-				article := Article{
-					GUID:        item.GUID,
-					Title:       item.Title,
-					URL:         item.Link,
-					Description: item.Description,
+		// Source routes
+		sources := api.Group("/sources")
+		{
+			// Add a new feed source
+			sources.POST("", func(c *gin.Context) {
+				var json struct {
+					URL string `json:"url" binding:"required"`
 				}
-				articles = append(articles, article)
-			}
 
-			if len(articles) == 0 {
-				c.JSON(200, gin.H{"status": "ok", "articles_added": 0, "message": "No new articles found"})
-				return
-			}
+				if err := c.ShouldBindJSON(&json); err != nil {
+					c.JSON(400, gin.H{"error": err.Error()})
+					return
+				}
 
-			opts := options.InsertMany().SetOrdered(false)
-			_, err = db.ArticleCollection.InsertMany(context.Background(), articles, opts)
-			if err != nil {
-				log.Printf("Failed to insert articles: %v", err) // Log the actual error
-				c.JSON(500, gin.H{"error": "Failed to save articles"})
-				return
-			}
+				// Check if feed already exists
+				var existingSource FeedSource
+				err := db.SourceCollection.FindOne(context.Background(), bson.M{"url": json.URL}).Decode(&existingSource)
+				if err == nil {
+					c.JSON(409, gin.H{"error": "Feed source already exists"})
+					return
+				}
 
-			c.JSON(200, gin.H{"status": "ok", "articles_added": len(articles)})
-		})
+				fp := gofeed.NewParser()
+				feed, err := fp.ParseURL(json.URL)
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to parse feed"})
+					return
+				}
 
-		api.GET("/articles", func(c *gin.Context) {
-			var articles []Article
-			cursor, err := db.ArticleCollection.Find(context.Background(), bson.M{})
-			if err != nil {
-				c.JSON(500, gin.H{"error": "Failed to fetch articles"})
-				return
-			}
-			defer cursor.Close(context.Background())
+				newSource := FeedSource{
+					Name: feed.Title,
+					URL:  json.URL,
+				}
 
-			if err = cursor.All(context.Background(), &articles); err != nil {
-				c.JSON(500, gin.H{"error": "Failed to decode articles"})
-				return
-			}
+				res, err := db.SourceCollection.InsertOne(context.Background(), newSource)
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to save feed source"})
+					return
+				}
+				sourceID := res.InsertedID.(primitive.ObjectID)
 
-			c.JSON(200, articles)
-		})
+				var articles []interface{}
+				for _, item := range feed.Items {
+					article := Article{
+						SourceID:    sourceID,
+						GUID:        item.GUID,
+						Title:       item.Title,
+						URL:         item.Link,
+						Description: item.Description,
+					}
+					articles = append(articles, article)
+				}
+
+				if len(articles) > 0 {
+					opts := options.InsertMany().SetOrdered(false)
+					_, err = db.ArticleCollection.InsertMany(context.Background(), articles, opts)
+					if err != nil {
+						// Log the error but don't fail the request for adding the source
+						log.Printf("Failed to insert articles for source %s: %v", sourceID.Hex(), err)
+					}
+				}
+
+				newSource.ID = sourceID
+				c.JSON(201, newSource)
+			})
+
+			// Get all feed sources
+			sources.GET("", func(c *gin.Context) {
+				var sources []FeedSource
+				cursor, err := db.SourceCollection.Find(context.Background(), bson.M{})
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to fetch sources"})
+					return
+				}
+				defer cursor.Close(context.Background())
+
+				if err = cursor.All(context.Background(), &sources); err != nil {
+					c.JSON(500, gin.H{"error": "Failed to decode sources"})
+					return
+				}
+
+				c.JSON(200, sources)
+			})
+
+			// Delete a feed source
+			sources.DELETE("/:id", func(c *gin.Context) {
+				id, err := primitive.ObjectIDFromHex(c.Param("id"))
+				if err != nil {
+					c.JSON(400, gin.H{"error": "Invalid ID"})
+					return
+				}
+
+				// Delete the source
+				_, err = db.SourceCollection.DeleteOne(context.Background(), bson.M{"_id": id})
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to delete source"})
+					return
+				}
+
+				// Delete associated articles
+				_, err = db.ArticleCollection.DeleteMany(context.Background(), bson.M{"sourceId": id})
+				if err != nil {
+					// Log this error but don't fail the request, as the source is already deleted.
+					log.Printf("Failed to delete articles for source %s: %v", id.Hex(), err)
+				}
+
+				c.JSON(200, gin.H{"status": "ok"})
+			})
+
+			// Get articles for a specific source
+			sources.GET("/:id/articles", func(c *gin.Context) {
+				id, err := primitive.ObjectIDFromHex(c.Param("id"))
+				if err != nil {
+					c.JSON(400, gin.H{"error": "Invalid Source ID"})
+					return
+				}
+
+				var articles []Article
+				cursor, err := db.ArticleCollection.Find(context.Background(), bson.M{"sourceId": id})
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to fetch articles"})
+					return
+				}
+				defer cursor.Close(context.Background())
+
+				if err = cursor.All(context.Background(), &articles); err != nil {
+					c.JSON(500, gin.H{"error": "Failed to decode articles"})
+					return
+				}
+
+				c.JSON(200, articles)
+			})
+		}
+
+		// Article routes
+		articles := api.Group("/articles")
+		{
+			// Get a single article by its ID
+			articles.GET("/:id", func(c *gin.Context) {
+				id, err := primitive.ObjectIDFromHex(c.Param("id"))
+				if err != nil {
+					c.JSON(400, gin.H{"error": "Invalid Article ID"})
+					return
+				}
+
+				var article Article
+				err = db.ArticleCollection.FindOne(context.Background(), bson.M{"_id": id}).Decode(&article)
+				if err != nil {
+					c.JSON(404, gin.H{"error": "Article not found"})
+					return
+				}
+
+				c.JSON(200, article)
+			})
+		}
 	}
 
 	router.Run(":8080") // listen and serve on 0.0.0.0:8080
