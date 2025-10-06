@@ -4,3 +4,7 @@ Content-Type: application/json
 {
   "url": "https://www.ruanyifeng.com/blog/atom.xml"
 }
+
+###
+
+GET http://localhost:8080/api/articles

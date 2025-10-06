@@ -5,6 +5,7 @@ import (
 	"log"
 	"github.com/gin-gonic/gin"
 	"github.com/mmcdole/gofeed"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"rss-reader/backend/db"
 )
@@ -74,6 +75,23 @@ func main() {
 			}
 
 			c.JSON(200, gin.H{"status": "ok", "articles_added": len(articles)})
+		})
+
+		api.GET("/articles", func(c *gin.Context) {
+			var articles []Article
+			cursor, err := db.ArticleCollection.Find(context.Background(), bson.M{})
+			if err != nil {
+				c.JSON(500, gin.H{"error": "Failed to fetch articles"})
+				return
+			}
+			defer cursor.Close(context.Background())
+
+			if err = cursor.All(context.Background(), &articles); err != nil {
+				c.JSON(500, gin.H{"error": "Failed to decode articles"})
+				return
+			}
+
+			c.JSON(200, articles)
 		})
 	}
 
