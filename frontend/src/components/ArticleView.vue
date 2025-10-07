@@ -1,7 +1,7 @@
 <script setup>
 import { defineProps, computed, ref, onMounted } from 'vue';
 import { marked } from 'marked';
-import { loadModel, summarizeText } from '../services/summarizer.js';
+import { loadModel, summarizeText, generateAISummary } from '../services/summarizer.js';
 
 // This component receives the selected article as a prop
 const props = defineProps({
@@ -14,6 +14,10 @@ const props = defineProps({
 const summary = ref('');
 const isLoadingSummary = ref(false);
 const summaryError = ref('');
+
+const aiSummary = ref('');
+const isLoadingAISummary = ref(false);
+const aiSummaryError = ref('');
 
 // Load the model when the component is mounted
 onMounted(async () => {
@@ -55,6 +59,24 @@ const generateSummary = async () => {
     isLoadingSummary.value = false;
   }
 };
+
+// Function to generate the AI summary
+const generateAISummaryHandler = async () => {
+  if (!props.article || !props.article.id) return;
+
+  isLoadingAISummary.value = true;
+  aiSummaryError.value = '';
+  aiSummary.value = '';
+
+  try {
+    aiSummary.value = await generateAISummary(props.article.id);
+  } catch (error) {
+    aiSummaryError.value = 'Failed to generate AI summary.';
+    console.error(error);
+  } finally {
+    isLoadingAISummary.value = false;
+  }
+};
 </script>
 
 <template>
@@ -67,15 +89,37 @@ const generateSummary = async () => {
       </h1>
 
       <div class="summary-section">
-        <button @click="generateSummary" :disabled="isLoadingSummary">
-          {{ isLoadingSummary ? 'Generating...' : 'Generate Summary' }}
-        </button>
-        <div v-if="summary" class="summary-content">
-          <h3>Summary</h3>
-          <p>{{ summary }}</p>
+        <div class="summary-controls">
+          <button @click="generateSummary" :disabled="isLoadingSummary">
+            {{ isLoadingSummary ? 'Generating...' : 'Generate Local Summary' }}
+          </button>
+          <button @click="generateAISummaryHandler" :disabled="isLoadingAISummary">
+            {{ isLoadingAISummary ? 'Generating...' : 'Generate AI Summary' }}
+          </button>
         </div>
-        <div v-if="summaryError" class="summary-error">
-          <p>{{ summaryError }}</p>
+
+        <div class="summaries-container">
+          <!-- Local Summary -->
+          <div class="summary-content-wrapper">
+            <div v-if="summary" class="summary-content">
+              <h3>Local Summary</h3>
+              <p>{{ summary }}</p>
+            </div>
+            <div v-if="summaryError" class="summary-error">
+              <p>{{ summaryError }}</p>
+            </div>
+          </div>
+
+          <!-- AI Summary -->
+          <div class="summary-content-wrapper">
+            <div v-if="aiSummary" class="summary-content">
+              <h3>AI Summary</h3>
+              <p>{{ aiSummary }}</p>
+            </div>
+            <div v-if="aiSummaryError" class="summary-error">
+              <p>{{ aiSummaryError }}</p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -150,15 +194,31 @@ h1 a:hover {
   border: 1px solid var(--color-border);
 }
 
+.summary-controls {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
 .summary-section button {
   background-color: var(--color-accent);
   color: var(--color-accent-text);
   border: none;
-  margin-bottom: 1rem;
+  /* margin-bottom: 1rem; */ /* Removed to use gap in controls */
 }
 
 .summary-section button:hover {
   background-color: var(--color-accent-hover);
+}
+
+.summaries-container {
+  display: flex;
+  gap: 1rem;
+}
+
+.summary-content-wrapper {
+  flex: 1;
+  min-width: 0;
 }
 
 .summary-section button:disabled {

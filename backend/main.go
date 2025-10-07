@@ -3,17 +3,55 @@ package main
 import (
 	"context"
 	"log"
+	"os"
 	"time"
 
 	"rss-reader/backend/db"
 
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 	"github.com/mmcdole/gofeed"
+	openai "github.com/sashabaranov/go-openai"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+var aiClient *openai.Client
+var aiModelName string
+
+func init() {
+	// Load .env file
+	err := godotenv.Load()
+	if err != nil {
+		log.Println("No .env file found, will use environment variables from OS")
+	}
+
+	apiKey := os.Getenv("OPENAI_API_KEY")
+	if apiKey == "" {
+		log.Println("Warning: OPENAI_API_KEY environment variable not set. AI summarization will be disabled.")
+		return
+	}
+
+	baseURL := os.Getenv("OPENAI_BASE_URL")
+	config := openai.DefaultConfig(apiKey)
+	if baseURL != "" {
+		config.BaseURL = baseURL
+		log.Printf("Using custom OpenAI Base URL: %s", baseURL)
+	}
+
+	aiClient = openai.NewClientWithConfig(config)
+	log.Println("OpenAI client initialized successfully.")
+
+	aiModelName = os.Getenv("OPENAI_MODEL_NAME")
+	if aiModelName == "" {
+		aiModelName = openai.GPT3Dot5Turbo // Default model
+		log.Printf("OPENAI_MODEL_NAME not set, using default: %s", aiModelName)
+	} else {
+		log.Printf("Using AI Model: %s", aiModelName)
+	}
+}
 
 // FeedSource represents an RSS feed source
 type FeedSource struct {
@@ -281,6 +319,58 @@ func main() {
 				}
 
 				c.JSON(200, article)
+			})
+
+			// Generate AI summary for an article
+			articles.POST("/:id/ai-summary", func(c *gin.Context) {
+				if aiClient == nil {
+					c.JSON(503, gin.H{"error": "AI service is not available"})
+					return
+				}
+
+				id, err := primitive.ObjectIDFromHex(c.Param("id"))
+				if err != nil {
+					c.JSON(400, gin.H{"error": "Invalid Article ID"})
+					return
+				}
+
+				var article Article
+				err = db.ArticleCollection.FindOne(context.Background(), bson.M{"_id": id}).Decode(&article)
+				if err != nil {
+					c.JSON(404, gin.H{"error": "Article not found"})
+					return
+				}
+
+				// Create a chat completion request
+				resp, err := aiClient.CreateChatCompletion(
+					context.Background(),
+					openai.ChatCompletionRequest{
+						Model: aiModelName,
+						Messages: []openai.ChatCompletionMessage{
+							{
+								Role:    openai.ChatMessageRoleSystem,
+								Content: "You are a helpful assistant that summarizes articles.",
+							},
+							{
+								Role:    openai.ChatMessageRoleUser,
+								Content: "Please summarize the following article content:\n\n" + article.Content,
+							},
+						},
+					},
+				)
+
+				if err != nil {
+					log.Printf("ChatCompletion error: %v\n", err)
+					c.JSON(500, gin.H{"error": "Failed to generate AI summary"})
+					return
+				}
+
+				if len(resp.Choices) == 0 {
+					c.JSON(500, gin.H{"error": "No summary content returned from AI"})
+					return
+				}
+
+				c.JSON(200, gin.H{"summary": resp.Choices[0].Message.Content})
 			})
 		}
 	}

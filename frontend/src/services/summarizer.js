@@ -157,3 +157,27 @@ export async function summarizeText(content, numSentences = 3, lambda = 0.7) {
     .map(item => item.sentence)
     .join(' ');
 }
+
+/**
+ * Calls the backend API to generate a summary using an AI model.
+ * @param {string} articleId The ID of the article to summarize.
+ * @returns {Promise<string>} A promise that resolves to the AI-generated summary.
+ */
+export async function generateAISummary(articleId) {
+  try {
+    const response = await fetch(`/api/articles/${articleId}/ai-summary`, {
+      method: 'POST',
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to fetch AI summary');
+    }
+
+    const data = await response.json();
+    return data.summary;
+  } catch (error) {
+    console.error('Error generating AI summary:', error);
+    throw error;
+  }
+}
