@@ -1,7 +1,7 @@
 <script setup>
-import { defineProps, computed, ref, onMounted } from 'vue';
-import { marked } from 'marked';
-import { loadModel, summarizeText, generateAISummary } from '../services/summarizer.js';
+import { defineProps, computed, ref } from "vue";
+import { marked } from "marked";
+import { generateAISummary } from "../services/summarizer.js";
 
 // This component receives the selected article as a prop
 const props = defineProps({
@@ -11,67 +11,30 @@ const props = defineProps({
   },
 });
 
-const summary = ref('');
-const isLoadingSummary = ref(false);
-const summaryError = ref('');
-
-const aiSummary = ref('');
+const aiSummary = ref("");
 const isLoadingAISummary = ref(false);
-const aiSummaryError = ref('');
-
-// Load the model when the component is mounted
-onMounted(async () => {
-  try {
-    await loadModel();
-  } catch (error) {
-    summaryError.value = 'Failed to load the summarization model.';
-    console.error(error);
-  }
-});
+const aiSummaryError = ref("");
 
 // A computed property to parse Markdown content into HTML
 const renderedContent = computed(() => {
   if (props.article && props.article.content) {
     return marked.parse(props.article.content);
   }
-  return '';
+  return "";
 });
-
-// Function to generate the summary
-const generateSummary = async () => {
-  if (!props.article || !props.article.content) return;
-
-  isLoadingSummary.value = true;
-  summaryError.value = '';
-  summary.value = '';
-
-  try {
-    // We need to get the plain text from the HTML content for an accurate summary
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = props.article.content;
-    const textContent = tempDiv.textContent || tempDiv.innerText || '';
-    
-    summary.value = await summarizeText(textContent);
-  } catch (error) {
-    summaryError.value = 'Failed to generate summary.';
-    console.error(error);
-  } finally {
-    isLoadingSummary.value = false;
-  }
-};
 
 // Function to generate the AI summary
 const generateAISummaryHandler = async () => {
   if (!props.article || !props.article.id) return;
 
   isLoadingAISummary.value = true;
-  aiSummaryError.value = '';
-  aiSummary.value = '';
+  aiSummaryError.value = "";
+  aiSummary.value = "";
 
   try {
     aiSummary.value = await generateAISummary(props.article.id);
   } catch (error) {
-    aiSummaryError.value = 'Failed to generate AI summary.';
+    aiSummaryError.value = "Failed to generate AI summary.";
     console.error(error);
   } finally {
     isLoadingAISummary.value = false;
@@ -90,26 +53,15 @@ const generateAISummaryHandler = async () => {
 
       <div class="summary-section">
         <div class="summary-controls">
-          <button @click="generateSummary" :disabled="isLoadingSummary">
-            {{ isLoadingSummary ? 'Generating...' : 'Generate Local Summary' }}
-          </button>
-          <button @click="generateAISummaryHandler" :disabled="isLoadingAISummary">
-            {{ isLoadingAISummary ? 'Generating...' : 'Generate AI Summary' }}
+          <button
+            @click="generateAISummaryHandler"
+            :disabled="isLoadingAISummary"
+          >
+            {{ isLoadingAISummary ? "Generating..." : "Generate AI Summary" }}
           </button>
         </div>
 
         <div class="summaries-container">
-          <!-- Local Summary -->
-          <div class="summary-content-wrapper">
-            <div v-if="summary" class="summary-content">
-              <h3>Local Summary</h3>
-              <p>{{ summary }}</p>
-            </div>
-            <div v-if="summaryError" class="summary-error">
-              <p>{{ summaryError }}</p>
-            </div>
-          </div>
-
           <!-- AI Summary -->
           <div class="summary-content-wrapper">
             <div v-if="aiSummary" class="summary-content">
