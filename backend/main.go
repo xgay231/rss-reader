@@ -78,6 +78,8 @@ type Article struct {
 	Description string             `json:"description" bson:"description"`
 	Content     string             `json:"content" bson:"content"`
 	PublishedAt *time.Time        `json:"publishedAt" bson:"publishedAt"`
+	IsStarred   bool               `json:"isStarred" bson:"isStarred"`
+	StarredAt   time.Time         `json:"starredAt" bson:"starredAt"`
 }
 
 func updateFeeds() {
@@ -390,6 +392,61 @@ func main() {
 				}
 
 				c.JSON(200, gin.H{"summary": removeThinkTags(resp.Choices[0].Message.Content)})
+			})
+
+			// Star an article
+			articles.POST("/:id/star", func(c *gin.Context) {
+				id, err := primitive.ObjectIDFromHex(c.Param("id"))
+				if err != nil {
+					c.JSON(400, gin.H{"error": "Invalid Article ID"})
+					return
+				}
+
+				update := bson.M{"$set": bson.M{"isStarred": true, "starredAt": time.Now()}}
+				_, err = db.ArticleCollection.UpdateByID(context.Background(), id, update)
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to star article"})
+					return
+				}
+
+				c.JSON(200, gin.H{"status": "ok", "isStarred": true})
+			})
+
+			// Unstar an article
+			articles.DELETE("/:id/star", func(c *gin.Context) {
+				id, err := primitive.ObjectIDFromHex(c.Param("id"))
+				if err != nil {
+					c.JSON(400, gin.H{"error": "Invalid Article ID"})
+					return
+				}
+
+				update := bson.M{"$set": bson.M{"isStarred": false}}
+				_, err = db.ArticleCollection.UpdateByID(context.Background(), id, update)
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to unstar article"})
+					return
+				}
+
+				c.JSON(200, gin.H{"status": "ok", "isStarred": false})
+			})
+
+			// Get all starred articles
+			articles.GET("/starred", func(c *gin.Context) {
+				filter := bson.M{"isStarred": true}
+				cursor, err := db.ArticleCollection.Find(context.Background(), filter)
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to fetch starred articles"})
+					return
+				}
+				defer cursor.Close(context.Background())
+
+				var articles []Article
+				if err = cursor.All(context.Background(), &articles); err != nil {
+					c.JSON(500, gin.H{"error": "Failed to decode articles"})
+					return
+				}
+
+				c.JSON(200, articles)
 			})
 		}
 	}

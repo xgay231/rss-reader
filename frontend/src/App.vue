@@ -6,6 +6,7 @@ import ArticleView from './components/ArticleView.vue';
 
 const articles = ref([]);
 const selectedArticle = ref(null);
+const sourceListRef = ref(null);
 
 // Column width state (in pixels)
 const leftWidth = ref(280);
@@ -51,6 +52,23 @@ const handleSourceSelected = async (source) => {
     selectedArticle.value = null;
     return;
   }
+
+  // Handle starred articles special case
+  if (source.id === 'starred') {
+    try {
+      const response = await fetch('/api/articles/starred');
+      if (!response.ok) {
+        throw new Error('Failed to fetch starred articles');
+      }
+      articles.value = await response.json();
+      selectedArticle.value = null;
+    } catch (error) {
+      console.error('Error fetching starred articles:', error);
+      articles.value = [];
+    }
+    return;
+  }
+
   try {
     const response = await fetch(`/api/sources/${source.id}/articles`);
     if (!response.ok) {
@@ -68,12 +86,19 @@ const handleSourceSelected = async (source) => {
 const handleArticleSelected = (article) => {
   selectedArticle.value = article;
 };
+
+// Refresh starred count when article is starred/unstarred
+const refreshStarredCount = () => {
+  if (sourceListRef.value) {
+    sourceListRef.value.refreshStarredCount();
+  }
+};
 </script>
 
 <template>
   <div id="app-container">
     <div class="left-pane" :style="{ width: leftWidth + 'px' }">
-      <SourceList @source-selected="handleSourceSelected" />
+      <SourceList ref="sourceListRef" @source-selected="handleSourceSelected" />
     </div>
     <div
       class="divider"
@@ -89,7 +114,7 @@ const handleArticleSelected = (article) => {
       @mousedown="(e) => startDrag(e, 'center')"
     ></div>
     <div class="right-pane">
-      <ArticleView :article="selectedArticle" />
+      <ArticleView :article="selectedArticle" @starred-changed="refreshStarredCount" />
     </div>
   </div>
 </template>

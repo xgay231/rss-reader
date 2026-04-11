@@ -13,6 +13,8 @@ const props = defineProps({
   },
 });
 
+const emit = defineEmits(['starred-changed']);
+
 const aiSummary = ref("");
 const isLoadingAISummary = ref(false);
 const aiSummaryError = ref("");
@@ -101,6 +103,20 @@ const formatTime = (timeString) => {
 
   return date.toLocaleDateString('zh-CN');
 };
+
+const toggleStar = async () => {
+  if (!props.article || !props.article.id) return;
+
+  const method = props.article.isStarred ? 'DELETE' : 'POST';
+  const response = await fetch(`/api/articles/${props.article.id}/star`, {
+    method,
+  });
+
+  if (response.ok) {
+    props.article.isStarred = !props.article.isStarred;
+    emit('starred-changed');
+  }
+};
 </script>
 
 <template>
@@ -110,6 +126,13 @@ const formatTime = (timeString) => {
         <a :href="article.url" target="_blank" rel="noopener noreferrer">
           {{ article.title }}
         </a>
+        <button
+          class="star-btn"
+          :class="{ starred: article.isStarred }"
+          @click="toggleStar"
+        >
+          {{ article.isStarred ? '★' : '☆' }}
+        </button>
       </h1>
       <p class="article-time">{{ formatTime(article.publishedAt) }}</p>
 
@@ -167,16 +190,38 @@ h1 {
   margin-top: 0;
   font-size: 1.8rem;
   margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 h1 a {
   color: var(--color-text-primary);
   text-decoration: none;
   transition: color 0.2s;
+  flex: 1;
 }
 
 h1 a:hover {
   color: var(--color-accent);
+}
+
+.star-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  padding: 0;
+  transition: color 0.2s;
+}
+
+.star-btn.starred {
+  color: #f5c518;
+}
+
+.star-btn:hover {
+  color: #f5c518;
 }
 
 .article-time {

@@ -4,6 +4,7 @@ import { ref, onMounted } from 'vue';
 const sources = ref([]);
 const newSourceUrl = ref('');
 const selectedSourceId = ref(null);
+const starredCount = ref(0);
 
 const emit = defineEmits(['source-selected']);
 
@@ -17,6 +18,17 @@ onMounted(async () => {
     sources.value = await response.json();
   } catch (error) {
     console.error('Failed to fetch sources:', error);
+  }
+
+  // Fetch starred count
+  try {
+    const starResponse = await fetch('/api/articles/starred');
+    if (starResponse.ok) {
+      const starredArticles = await starResponse.json();
+      starredCount.value = starredArticles.length;
+    }
+  } catch (error) {
+    console.error('Failed to fetch starred count:', error);
   }
 });
 
@@ -57,6 +69,37 @@ const selectSource = (source) => {
   emit('source-selected', source);
 };
 
+const selectStarred = async () => {
+  selectedSourceId.value = 'starred';
+  emit('source-selected', { id: 'starred', name: '收藏夹' });
+
+  // Refresh starred count
+  try {
+    const starResponse = await fetch('/api/articles/starred');
+    if (starResponse.ok) {
+      const starredArticles = await starResponse.json();
+      starredCount.value = starredArticles.length;
+    }
+  } catch (error) {
+    console.error('Failed to fetch starred count:', error);
+  }
+};
+
+// Expose method for parent to update starred count
+const refreshStarredCount = async () => {
+  try {
+    const starResponse = await fetch('/api/articles/starred');
+    if (starResponse.ok) {
+      const starredArticles = await starResponse.json();
+      starredCount.value = starredArticles.length;
+    }
+  } catch (error) {
+    console.error('Failed to fetch starred count:', error);
+  }
+};
+
+defineExpose({ refreshStarredCount });
+
 // Implement deleteSource function
 const deleteSource = async (sourceId, event) => {
   event.stopPropagation(); // Prevent li click event from firing
@@ -96,6 +139,14 @@ const deleteSource = async (sourceId, event) => {
       <button @click="addSource">Add</button>
     </div>
     <ul>
+      <li
+        class="starred-item"
+        :class="{ selected: selectedSourceId === 'starred' }"
+        @click="selectStarred"
+      >
+        <span>★ 收藏夹</span>
+        <span class="star-count" v-if="starredCount > 0">{{ starredCount }}</span>
+      </li>
       <li
         v-for="source in sources"
         :key="source.id"
@@ -197,5 +248,19 @@ li.selected {
 li:hover .delete-btn {
   visibility: visible;
   opacity: 1;
+}
+
+.starred-item {
+  color: var(--color-accent);
+}
+
+.star-count {
+  background-color: var(--color-accent);
+  color: var(--color-accent-text);
+  font-size: 0.75rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 10px;
+  min-width: 1.2rem;
+  text-align: center;
 }
 </style>
