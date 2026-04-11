@@ -13,7 +13,7 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(['starred-changed']);
+const emit = defineEmits(['starred-changed', 'summary-updated']);
 
 const aiSummary = ref("");
 const isLoadingAISummary = ref(false);
@@ -79,20 +79,14 @@ const renderedContent = computed(() => {
 const generateAISummaryHandler = async () => {
   if (!props.article || !props.article.id) return;
 
-  // If summary already exists, just display it
-  if (props.article.summary) {
-    aiSummary.value = props.article.summary;
-    return;
-  }
-
   isLoadingAISummary.value = true;
   aiSummaryError.value = "";
   aiSummary.value = "";
 
   try {
     const result = await generateAISummary(props.article.id);
-    aiSummary.value = result.summary;
-    props.article.summary = result.summary;
+    aiSummary.value = result;
+    emit('summary-updated', { ...props.article, summary: result });
   } catch (error) {
     aiSummaryError.value = "Failed to generate AI summary.";
     console.error(error);
@@ -144,14 +138,12 @@ const toggleStar = async () => {
           {{ article.title }}
         </a>
         <button
-          v-if="!article.summary"
           class="ai-summary-btn"
           @click="generateAISummaryHandler"
           :disabled="isLoadingAISummary"
         >
-          {{ isLoadingAISummary ? "生成中..." : "AI 总结" }}
+          {{ isLoadingAISummary ? "生成中..." : (article.summary ? "重新生成" : "AI 总结") }}
         </button>
-        <span v-else class="summary-badge">✓ 已生成总结</span>
         <button
           class="star-btn"
           :class="{ starred: article.isStarred }"
@@ -162,8 +154,8 @@ const toggleStar = async () => {
       </h1>
       <p class="article-time">{{ formatTime(article.publishedAt) }}</p>
 
-      <div class="summary-section">
-        <div class="summary-controls">
+      <div class="summary-section" v-if="aiSummary || article.summary">
+        <div class="summary-controls" v-if="!article.summary">
           <button
             @click="generateAISummaryHandler"
             :disabled="isLoadingAISummary"
@@ -353,8 +345,9 @@ h1 a:hover {
 }
 
 .summary-content p {
-  font-style: italic;
-  color: var(--color-text-secondary);
+  font-style: normal;
+  color: var(--color-text-primary);
+  font-size: 0.95rem;
 }
 
 .summary-error {

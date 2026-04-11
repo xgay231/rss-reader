@@ -132,6 +132,11 @@ const handleArticleSelected = async (article) => {
   currentView.value = "content";
 };
 
+// Update article when summary is generated
+const handleSummaryUpdated = (updatedArticle) => {
+  selectedArticle.value = updatedArticle;
+};
+
 // Refresh starred count when article is starred/unstarred
 const refreshStarredCount = () => {
   if (sourceListRef.value) {
@@ -192,6 +197,7 @@ const refreshStarredCount = () => {
       <ArticleView
         :article="selectedArticle"
         @starred-changed="refreshStarredCount"
+        @summary-updated="handleSummaryUpdated"
       />
     </div>
   </div>
