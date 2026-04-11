@@ -1,6 +1,8 @@
 <script setup>
 import { defineProps, computed, ref } from "vue";
 import { marked } from "marked";
+import DOMPurify from "dompurify";
+import { detectContentType } from "../utils/contentDetector.js";
 import { generateAISummary } from "../services/summarizer.js";
 
 // This component receives the selected article as a prop
@@ -15,12 +17,51 @@ const aiSummary = ref("");
 const isLoadingAISummary = ref(false);
 const aiSummaryError = ref("");
 
-// A computed property to parse Markdown content into HTML
-const renderedContent = computed(() => {
+// Detect content type
+const contentType = computed(() => {
   if (props.article && props.article.content) {
-    return marked.parse(props.article.content);
+    return detectContentType(props.article.content);
   }
-  return "";
+  return 'plain';
+});
+
+// Render content based on detected type
+const renderedContent = computed(() => {
+  if (!props.article || !props.article.content) {
+    return "";
+  }
+
+  const content = props.article.content;
+
+  switch (contentType.value) {
+    case 'html':
+      // Sanitize HTML to prevent XSS
+      return DOMPurify.sanitize(content, {
+        ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'em', 'strong', 'a', 'img',
+          'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+          'blockquote', 'pre', 'code', 'span', 'div', 'table',
+          'thead', 'tbody', 'tr', 'th', 'td', 'hr'],
+        ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class', 'target',
+          'rel', 'width', 'height'],
+        FORCE_BODY: true,
+      });
+
+    case 'markdown':
+      // Convert literal \n to actual newlines before parsing
+      return marked.parse(content.replace(/\\n/g, '\n'));
+
+    case 'plain':
+    default:
+      // Convert literal \n to actual newlines, escape HTML entities and preserve whitespace
+      const escaped = content
+        .replace(/\\n/g, '\n')  // Convert literal \n to actual newlines
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+      return `<pre style="white-space: pre-wrap; word-wrap: break-word;">${escaped}</pre>`;
+  }
 });
 
 // Function to generate the AI summary
