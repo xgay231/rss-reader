@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 	"os"
+	"regexp"
+	"strings"
 	"time"
 
 	"rss-reader/backend/db"
@@ -20,6 +22,12 @@ import (
 
 var aiClient *openai.Client
 var aiModelName string
+
+// removeThinkTags removes <think>...</think> tags from AI-generated content
+func removeThinkTags(text string) string {
+	re := regexp.MustCompile(`<think>[\s\S]*?<\/think>`)
+	return strings.TrimSpace(re.ReplaceAllString(text, ""))
+}
 
 func init() {
 	// Load .env file
@@ -349,7 +357,7 @@ func main() {
 						Messages: []openai.ChatCompletionMessage{
 							{
 								Role:    openai.ChatMessageRoleSystem,
-								Content: "You are a helpful assistant that summarizes articles.",
+								Content: "你是一个帮助用户总结文章内容的助手。请用中文输出纯文本摘要，不要使用 markdown 格式，不要使用列表、标题、粗体等任何格式标记，只输出纯段落文本。",
 							},
 							{
 								Role:    openai.ChatMessageRoleUser,
@@ -370,7 +378,7 @@ func main() {
 					return
 				}
 
-				c.JSON(200, gin.H{"summary": resp.Choices[0].Message.Content})
+				c.JSON(200, gin.H{"summary": removeThinkTags(resp.Choices[0].Message.Content)})
 			})
 		}
 	}
