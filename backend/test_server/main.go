@@ -372,8 +372,8 @@ func setupRoutes(r *gin.Engine) {
 
 			dynamicArticles.RLock()
 			allArticles := make([]TestArticle, 0, len(predefinedArticles)+len(dynamicArticles.articles))
-			allArticles = append(allArticles, predefinedArticles...)
 			allArticles = append(allArticles, dynamicArticles.articles...)
+			allArticles = append(allArticles, predefinedArticles...)
 			dynamicArticles.RUnlock()
 
 			items := make([]TestArticle, count)
@@ -478,11 +478,11 @@ func main() {
 
 	fmt.Printf("Test RSS Server starting on %s\n", addr)
 	fmt.Printf("Available feeds:\n")
-	fmt.Printf("  - http://%s/feeds/simple (5 fixed articles)\n", addr)
-	fmt.Printf("  - http://%s/feeds/random (5-20 random articles)\n", addr)
-	fmt.Printf("  - http://%s/feeds/empty (no articles)\n", addr)
-	fmt.Printf("  - http://%s/feeds/single (1 article)\n", addr)
-	fmt.Printf("  - http://%s/feeds/custom?count=N (N articles)\n", addr)
-	fmt.Printf("  - http://%s/ (Web UI)\n", addr)
+	fmt.Printf("  - http://localhost%s/feeds/simple (5 fixed articles)\n", addr)
+	fmt.Printf("  - http://localhost%s/feeds/random (5-20 random articles)\n", addr)
+	fmt.Printf("  - http://localhost%s/feeds/empty (no articles)\n", addr)
+	fmt.Printf("  - http://localhost%s/feeds/single (1 article)\n", addr)
+	fmt.Printf("  - http://localhost%s/feeds/custom?count=N (N articles)\n", addr)
+	fmt.Printf("  - http://localhost%s/ (Web UI)\n", addr)
 	r.Run(addr)
 }
