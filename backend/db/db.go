@@ -12,6 +12,7 @@ import (
 var Client *mongo.Client
 var ArticleCollection *mongo.Collection
 var SourceCollection *mongo.Collection
+var GroupCollection *mongo.Collection
 
 func ConnectDatabase() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -30,4 +31,5 @@ func ConnectDatabase() {
 	Client = client
 	ArticleCollection = client.Database("rss_reader").Collection("articles")
 	SourceCollection = client.Database("rss_reader").Collection("sources")
+	GroupCollection = client.Database("rss_reader").Collection("groups")
 }

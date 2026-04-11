@@ -61,11 +61,20 @@ func init() {
 	}
 }
 
+// Group represents a feed source group
+type Group struct {
+	ID        primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	Name      string             `json:"name" bson:"name"`
+	SortOrder int                `json:"sortOrder" bson:"sortOrder"`
+	CreatedAt time.Time          `json:"createdAt" bson:"createdAt"`
+}
+
 // FeedSource represents an RSS feed source
 type FeedSource struct {
-	ID   primitive.ObjectID `json:"id" bson:"_id,omitempty"`
-	Name string             `json:"name" bson:"name"`
-	URL  string             `json:"url" bson:"url"`
+	ID      primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	Name    string             `json:"name" bson:"name"`
+	URL     string             `json:"url" bson:"url"`
+	GroupID primitive.ObjectID `json:"groupId" bson:"groupId"`
 }
 
 // Article represents a single RSS feed item
@@ -318,6 +327,141 @@ func main() {
 				}
 
 				c.JSON(200, articles)
+			})
+
+			// Assign source to group
+			sources.PUT("/:id/group", func(c *gin.Context) {
+				id, err := primitive.ObjectIDFromHex(c.Param("id"))
+				if err != nil {
+					c.JSON(400, gin.H{"error": "Invalid Source ID"})
+					return
+				}
+
+				var json struct {
+					GroupID string `json:"groupId"`
+				}
+
+				if err := c.ShouldBindJSON(&json); err != nil {
+					c.JSON(400, gin.H{"error": err.Error()})
+					return
+				}
+
+				var groupID primitive.ObjectID
+				if json.GroupID != "" {
+					groupID, err = primitive.ObjectIDFromHex(json.GroupID)
+					if err != nil {
+						c.JSON(400, gin.H{"error": "Invalid Group ID"})
+						return
+					}
+				}
+
+				update := bson.M{"$set": bson.M{"groupId": groupID}}
+				_, err = db.SourceCollection.UpdateByID(context.Background(), id, update)
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to update source"})
+					return
+				}
+
+				c.JSON(200, gin.H{"status": "ok"})
+			})
+		}
+
+		// Group routes
+		groups := api.Group("/groups")
+		{
+			// Create a group
+			groups.POST("", func(c *gin.Context) {
+				var json struct {
+					Name string `json:"name" binding:"required"`
+				}
+
+				if err := c.ShouldBindJSON(&json); err != nil {
+					c.JSON(400, gin.H{"error": err.Error()})
+					return
+				}
+
+				group := Group{
+					Name:      json.Name,
+					CreatedAt: time.Now(),
+				}
+
+				res, err := db.GroupCollection.InsertOne(context.Background(), group)
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to create group"})
+					return
+				}
+
+				group.ID = res.InsertedID.(primitive.ObjectID)
+				c.JSON(201, group)
+			})
+
+			// Get all groups
+			groups.GET("", func(c *gin.Context) {
+				var groups []Group
+				cursor, err := db.GroupCollection.Find(context.Background(), bson.M{})
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to fetch groups"})
+					return
+				}
+				defer cursor.Close(context.Background())
+
+				if err = cursor.All(context.Background(), &groups); err != nil {
+					c.JSON(500, gin.H{"error": "Failed to decode groups"})
+					return
+				}
+
+				c.JSON(200, groups)
+			})
+
+			// Update a group
+			groups.PUT("/:id", func(c *gin.Context) {
+				id, err := primitive.ObjectIDFromHex(c.Param("id"))
+				if err != nil {
+					c.JSON(400, gin.H{"error": "Invalid Group ID"})
+					return
+				}
+
+				var json struct {
+					Name string `json:"name"`
+				}
+
+				if err := c.ShouldBindJSON(&json); err != nil {
+					c.JSON(400, gin.H{"error": err.Error()})
+					return
+				}
+
+				update := bson.M{"$set": bson.M{"name": json.Name}}
+				_, err = db.GroupCollection.UpdateByID(context.Background(), id, update)
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to update group"})
+					return
+				}
+
+				c.JSON(200, gin.H{"status": "ok"})
+			})
+
+			// Delete a group
+			groups.DELETE("/:id", func(c *gin.Context) {
+				id, err := primitive.ObjectIDFromHex(c.Param("id"))
+				if err != nil {
+					c.JSON(400, gin.H{"error": "Invalid Group ID"})
+					return
+				}
+
+				// Delete the group
+				_, err = db.GroupCollection.DeleteOne(context.Background(), bson.M{"_id": id})
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to delete group"})
+					return
+				}
+
+				// Remove groupId from sources in this group
+				_, err = db.SourceCollection.UpdateMany(context.Background(), bson.M{"groupId": id}, bson.M{"$set": bson.M{"groupId": primitive.NilObjectID}})
+				if err != nil {
+					log.Printf("Failed to update sources after group deletion: %v", err)
+				}
+
+				c.JSON(200, gin.H{"status": "ok"})
 			})
 		}
 
