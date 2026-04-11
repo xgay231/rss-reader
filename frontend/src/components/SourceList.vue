@@ -12,6 +12,7 @@ const editingGroupName = ref('');
 const collapsedGroups = ref({});
 const openMenuSourceId = ref(null);
 const showSubmenu = ref(null);
+const submenuLeft = ref({}); // Track if submenu should open to the left
 
 // Drag state
 const draggingType = ref(null); // 'group' or 'source'
@@ -308,6 +309,18 @@ const cancelEditGroup = () => {
   editingGroupName.value = '';
 };
 
+const toggleSubmenu = (sourceId, event) => {
+  if (showSubmenu.value === sourceId) {
+    showSubmenu.value = null;
+  } else {
+    showSubmenu.value = sourceId;
+    // Calculate if submenu should open to the left
+    const menuRect = event.target.getBoundingClientRect();
+    const spaceOnRight = window.innerWidth - menuRect.right;
+    submenuLeft.value[sourceId] = spaceOnRight < 150;
+  }
+};
+
 const selectSource = (source) => {
   selectedSourceId.value = source.id;
   openMenuSourceId.value = null; // Close dropdown menu
@@ -471,7 +484,7 @@ const toggleGroupCollapse = (groupId) => {
             <div class="more-btn" @click.stop="toggleMenu(source.id)">⋮</div>
             <!-- Dropdown menu -->
             <div class="dropdown-menu" v-if="openMenuSourceId === source.id">
-              <div class="menu-item has-submenu" @mouseenter="showSubmenu = source.id" @mouseleave="showSubmenu = null">
+              <div class="menu-item has-submenu" :class="{ 'submenu-left': submenuLeft[source.id] }" @mouseenter="showSubmenu = source.id" @mouseleave="showSubmenu = null" @click.stop="toggleSubmenu(source.id, $event)">
                 <span>分组</span>
                 <span class="arrow">›</span>
                 <!-- Submenu -->
@@ -527,7 +540,7 @@ const toggleGroupCollapse = (groupId) => {
             <div class="more-btn" @click.stop="toggleMenu(source.id)">⋮</div>
             <!-- Dropdown menu -->
             <div class="dropdown-menu" v-if="openMenuSourceId === source.id">
-              <div class="menu-item has-submenu" @mouseenter="showSubmenu = source.id" @mouseleave="showSubmenu = null">
+              <div class="menu-item has-submenu" :class="{ 'submenu-left': submenuLeft[source.id] }" @mouseenter="showSubmenu = source.id" @mouseleave="showSubmenu = null" @click.stop="toggleSubmenu(source.id, $event)">
                 <span>分组</span>
                 <span class="arrow">›</span>
                 <!-- Submenu -->
@@ -799,6 +812,11 @@ li {
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
   min-width: 120px;
   z-index: 200;
+}
+
+.submenu-left .submenu {
+  left: auto;
+  right: 100%;
 }
 
 .star-count {
