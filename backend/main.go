@@ -297,8 +297,8 @@ func main() {
 					return
 				}
 
-				// Delete associated articles
-				_, err = db.ArticleCollection.DeleteMany(context.Background(), bson.M{"sourceId": id})
+				// Delete associated articles (keep starred articles)
+				_, err = db.ArticleCollection.DeleteMany(context.Background(), bson.M{"sourceId": id, "isStarred": false})
 				if err != nil {
 					// Log this error but don't fail the request, as the source is already deleted.
 					log.Printf("Failed to delete articles for source %s: %v", id.Hex(), err)
