@@ -15,6 +15,26 @@ const emit = defineEmits(['article-selected']);
 const selectArticle = (article) => {
   emit('article-selected', article);
 };
+
+const formatTime = (timeString) => {
+  if (!timeString) return '';
+
+  const date = new Date(timeString);
+  const now = new Date();
+  const diff = now - date; // milliseconds
+
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (minutes < 1) return '刚刚';
+  if (minutes < 60) return `${minutes} 分钟前`;
+  if (hours < 24) return `${hours} 小时前`;
+  if (days === 1) return '昨天';
+  if (days < 7) return `${days} 天前`;
+
+  return date.toLocaleDateString('zh-CN');
+};
 </script>
 
 <template>
@@ -27,6 +47,9 @@ const selectArticle = (article) => {
         @click="selectArticle(article)"
       >
         <h3>{{ article.title }}</h3>
+        <div class="article-meta">
+          <span class="published-time">{{ formatTime(article.publishedAt) }}</span>
+        </div>
         <p>{{ article.description }}</p>
       </li>
     </ul>
@@ -71,9 +94,19 @@ li:hover {
 }
 
 h3 {
-  margin: 0 0 0.5rem 0;
+  margin: 0 0 0.25rem 0;
   font-size: 1rem;
   color: var(--color-accent-hover);
+}
+
+.article-meta {
+  margin-bottom: 0.5rem;
+}
+
+.published-time {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  opacity: 0.7;
 }
 
 p {

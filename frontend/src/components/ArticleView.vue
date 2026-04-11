@@ -81,6 +81,26 @@ const generateAISummaryHandler = async () => {
     isLoadingAISummary.value = false;
   }
 };
+
+const formatTime = (timeString) => {
+  if (!timeString) return '';
+
+  const date = new Date(timeString);
+  const now = new Date();
+  const diff = now - date; // milliseconds
+
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (minutes < 1) return '刚刚';
+  if (minutes < 60) return `${minutes} 分钟前`;
+  if (hours < 24) return `${hours} 小时前`;
+  if (days === 1) return '昨天';
+  if (days < 7) return `${days} 天前`;
+
+  return date.toLocaleDateString('zh-CN');
+};
 </script>
 
 <template>
@@ -91,6 +111,7 @@ const generateAISummaryHandler = async () => {
           {{ article.title }}
         </a>
       </h1>
+      <p class="article-time">{{ formatTime(article.publishedAt) }}</p>
 
       <div class="summary-section">
         <div class="summary-controls">
@@ -156,6 +177,13 @@ h1 a {
 
 h1 a:hover {
   color: var(--color-accent);
+}
+
+.article-time {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  opacity: 0.7;
+  margin-bottom: 1rem;
 }
 
 .article-content {

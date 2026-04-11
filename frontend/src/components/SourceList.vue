@@ -127,13 +127,18 @@ h2 {
 .add-source-form {
   display: flex;
   margin-bottom: 1rem;
+  position: relative;
+  z-index: 20;
 }
 
 input[type="text"] {
-  flex-grow: 1;
+  flex: 1;
+  min-width: 0;
   padding: 0.5rem;
   border: 1px solid var(--color-border);
   border-radius: 4px 0 0 4px;
+  position: relative;
+  z-index: 20;
 }
 
 button {
@@ -144,6 +149,8 @@ button {
   border-radius: 0 4px 4px 0;
   cursor: pointer;
   transition: background-color 0.2s;
+  position: relative;
+  z-index: 20;
 }
 
 button:hover {

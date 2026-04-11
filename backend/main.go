@@ -77,6 +77,7 @@ type Article struct {
 	URL         string             `json:"url" bson:"url"`
 	Description string             `json:"description" bson:"description"`
 	Content     string             `json:"content" bson:"content"`
+	PublishedAt *time.Time        `json:"publishedAt" bson:"publishedAt"`
 }
 
 func updateFeeds() {
@@ -114,6 +115,10 @@ func updateFeeds() {
 				if content == "" {
 					content = item.Description
 				}
+				var publishedAt *time.Time
+				if item.PublishedParsed != nil {
+					publishedAt = item.PublishedParsed
+				}
 				article := Article{
 					SourceID:    source.ID,
 					GUID:        item.GUID,
@@ -121,6 +126,7 @@ func updateFeeds() {
 					URL:         item.Link,
 					Description: item.Description,
 					Content:     content,
+					PublishedAt: publishedAt,
 				}
 				newArticles = append(newArticles, article)
 			} else if err != nil {
@@ -216,6 +222,10 @@ func main() {
 					if content == "" {
 						content = item.Description
 					}
+					var publishedAt *time.Time
+					if item.PublishedParsed != nil {
+						publishedAt = item.PublishedParsed
+					}
 					article := Article{
 						SourceID:    sourceID,
 						GUID:        item.GUID,
@@ -223,6 +233,7 @@ func main() {
 						URL:         item.Link,
 						Description: item.Description,
 						Content:     content,
+						PublishedAt: publishedAt,
 					}
 					articles = append(articles, article)
 				}
