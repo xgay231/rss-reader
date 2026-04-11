@@ -116,8 +116,19 @@ const handleSourceSelected = async (source) => {
 };
 
 // This function is called when an article is selected in the ArticleList component
-const handleArticleSelected = (article) => {
-  selectedArticle.value = article;
+const handleArticleSelected = async (article) => {
+  // Fetch full article to ensure we have summary field
+  try {
+    const response = await fetch(`/api/articles/${article.id}`);
+    if (response.ok) {
+      selectedArticle.value = await response.json();
+    } else {
+      selectedArticle.value = article;
+    }
+  } catch (error) {
+    console.error("Error fetching full article:", error);
+    selectedArticle.value = article;
+  }
   currentView.value = "content";
 };
 

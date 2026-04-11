@@ -79,16 +79,18 @@ type FeedSource struct {
 
 // Article represents a single RSS feed item
 type Article struct {
-	ID          primitive.ObjectID `json:"id" bson:"_id,omitempty"`
-	SourceID    primitive.ObjectID `json:"sourceId" bson:"sourceId"`
-	GUID        string             `json:"guid" bson:"guid"`
-	Title       string             `json:"title" bson:"title"`
-	URL         string             `json:"url" bson:"url"`
-	Description string             `json:"description" bson:"description"`
-	Content     string             `json:"content" bson:"content"`
-	PublishedAt *time.Time        `json:"publishedAt" bson:"publishedAt"`
-	IsStarred   bool               `json:"isStarred" bson:"isStarred"`
-	StarredAt   time.Time         `json:"starredAt" bson:"starredAt"`
+	ID                 primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	SourceID           primitive.ObjectID `json:"sourceId" bson:"sourceId"`
+	GUID               string             `json:"guid" bson:"guid"`
+	Title              string             `json:"title" bson:"title"`
+	URL                string             `json:"url" bson:"url"`
+	Description        string             `json:"description" bson:"description"`
+	Content            string             `json:"content" bson:"content"`
+	PublishedAt        *time.Time        `json:"publishedAt" bson:"publishedAt"`
+	IsStarred          bool               `json:"isStarred" bson:"isStarred"`
+	StarredAt          time.Time         `json:"starredAt" bson:"starredAt"`
+	Summary            string             `json:"summary" bson:"summary"`
+	SummaryGeneratedAt *time.Time        `json:"summaryGeneratedAt" bson:"summaryGeneratedAt"`
 }
 
 func updateFeeds() {
@@ -535,7 +537,18 @@ func main() {
 					return
 				}
 
-				c.JSON(200, gin.H{"summary": removeThinkTags(resp.Choices[0].Message.Content)})
+				summary := removeThinkTags(resp.Choices[0].Message.Content)
+
+				// Save summary to database
+				now := time.Now()
+				update := bson.M{"$set": bson.M{"summary": summary, "summaryGeneratedAt": now}}
+				_, err = db.ArticleCollection.UpdateByID(context.Background(), id, update)
+				if err != nil {
+					log.Printf("Failed to save AI summary for article %s: %v", id.Hex(), err)
+					// Continue anyway - don't fail the request
+				}
+
+				c.JSON(200, gin.H{"summary": summary})
 			})
 
 			// Star an article

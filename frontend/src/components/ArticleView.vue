@@ -1,5 +1,5 @@
 <script setup>
-import { defineProps, computed, ref } from "vue";
+import { defineProps, computed, ref, watch } from "vue";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { detectContentType } from "../utils/contentDetector.js";
@@ -18,6 +18,15 @@ const emit = defineEmits(['starred-changed']);
 const aiSummary = ref("");
 const isLoadingAISummary = ref(false);
 const aiSummaryError = ref("");
+
+// Initialize aiSummary from article prop when available
+watch(() => props.article, (newArticle) => {
+  if (newArticle && newArticle.summary) {
+    aiSummary.value = newArticle.summary;
+  } else {
+    aiSummary.value = "";
+  }
+}, { immediate: true });
 
 // Detect content type
 const contentType = computed(() => {
@@ -70,12 +79,20 @@ const renderedContent = computed(() => {
 const generateAISummaryHandler = async () => {
   if (!props.article || !props.article.id) return;
 
+  // If summary already exists, just display it
+  if (props.article.summary) {
+    aiSummary.value = props.article.summary;
+    return;
+  }
+
   isLoadingAISummary.value = true;
   aiSummaryError.value = "";
   aiSummary.value = "";
 
   try {
-    aiSummary.value = await generateAISummary(props.article.id);
+    const result = await generateAISummary(props.article.id);
+    aiSummary.value = result.summary;
+    props.article.summary = result.summary;
   } catch (error) {
     aiSummaryError.value = "Failed to generate AI summary.";
     console.error(error);
@@ -126,6 +143,15 @@ const toggleStar = async () => {
         <a :href="article.url" target="_blank" rel="noopener noreferrer">
           {{ article.title }}
         </a>
+        <button
+          v-if="!article.summary"
+          class="ai-summary-btn"
+          @click="generateAISummaryHandler"
+          :disabled="isLoadingAISummary"
+        >
+          {{ isLoadingAISummary ? "生成中..." : "AI 总结" }}
+        </button>
+        <span v-else class="summary-badge">✓ 已生成总结</span>
         <button
           class="star-btn"
           :class="{ starred: article.isStarred }"
@@ -222,6 +248,34 @@ h1 a:hover {
 
 .star-btn:hover {
   color: #f5c518;
+}
+
+.ai-summary-btn {
+  background-color: var(--color-accent);
+  color: var(--color-accent-text);
+  border: none;
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.ai-summary-btn:hover {
+  background-color: var(--color-accent-hover);
+}
+
+.ai-summary-btn:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.summary-badge {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-pane);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
 }
 
 .article-time {
