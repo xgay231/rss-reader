@@ -156,15 +156,27 @@ type FeedSource struct {
     URL  string             `json:"url" bson:"url"`
 }
 
+// Group 分组 - backend/db/db.go
+type Group struct {
+    ID        primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+    Name      string             `json:"name" bson:"name"`
+    CreatedAt time.Time         `json:"createdAt" bson:"createdAt"`
+}
+
 // Article 文章 - main.go:63-72
 type Article struct {
-    ID          primitive.ObjectID `json:"id" bson:"_id,omitempty"`
-    SourceID    primitive.ObjectID `json:"sourceId" bson:"sourceId"`
-    GUID        string             `json:"guid" bson:"guid"`
-    Title       string             `json:"title" bson:"title"`
-    URL         string             `json:"url" bson:"url"`
-    Description string             `json:"description" bson:"description"`
-    Content     string             `json:"content" bson:"content"`
+    ID                 primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+    SourceID           primitive.ObjectID `json:"sourceId" bson:"sourceId"`
+    GUID               string             `json:"guid" bson:"guid"`
+    Title              string             `json:"title" bson:"title"`
+    URL                string             `json:"url" bson:"url"`
+    Description        string             `json:"description" bson:"description"`
+    Content            string             `json:"content" bson:"content"`
+    PublishedAt        *time.Time         `json:"publishedAt" bson:"publishedAt"`
+    IsStarred          bool               `json:"isStarred" bson:"isStarred"`
+    StarredAt          time.Time         `json:"starredAt" bson:"starredAt"`
+    Summary            string             `json:"summary" bson:"summary"`
+    SummaryGeneratedAt *time.Time         `json:"summaryGeneratedAt" bson:"summaryGeneratedAt"`
 }
 ```
 
@@ -213,10 +225,18 @@ func updateFeeds() {
 | `GET /ping`                         | [`main.go:155-159`](backend/main.go:155) | 健康检查                        |
 | `POST /api/sources`                 | [`main.go:168-233`](backend/main.go:168) | 添加订阅源，解析 RSS 并存储文章 |
 | `GET /api/sources`                  | [`main.go:236-251`](backend/main.go:236) | 获取所有订阅源                  |
-| `DELETE /api/sources/:id`           | [`main.go:254-276`](backend/main.go:254) | 删除订阅源及其关联文章          |
+| `DELETE /api/sources/:id`           | [`main.go:254-276`](backend/main.go:254) | 删除订阅源（保留已收藏文章）    |
 | `GET /api/sources/:id/articles`     | [`main.go:279-300`](backend/main.go:279) | 获取订阅源下的所有文章          |
-| `GET /api/articles/:id`             | [`main.go:307-322`](backend/main.go:307) | 获取单篇文章详情                |
-| `POST /api/articles/:id/ai-summary` | [`main.go:325-374`](backend/main.go:325) | 调用 OpenAI API 生成摘要        |
+| `PUT /api/sources/:id/group`        | [`main.go:334-368`](backend/main.go:334) | 将订阅源分配到分组              |
+| `POST /api/groups`                  | [`main.go:375-397`](backend/main.go:375) | 创建分组                       |
+| `GET /api/groups`                   | [`main.go:399-418`](backend/main.go:399) | 获取所有分组                    |
+| `PUT /api/groups/:id`               | [`main.go:420-445`](backend/main.go:420) | 更新分组                        |
+| `DELETE /api/groups/:id`            | [`main.go:447-470`](backend/main.go:447) | 删除分组                        |
+| `GET /api/articles/starred`         | [`main.go:496-512`](backend/main.go:496) | 获取所有收藏文章                |
+| `GET /api/articles/:id`             | [`main.go:515-530`](backend/main.go:515) | 获取单篇文章详情                |
+| `POST /api/articles/:id/ai-summary` | [`main.go:533-573`](backend/main.go:533) | 调用 OpenAI API 生成摘要        |
+| `POST /api/articles/:id/star`       | [`main.go:596-611`](backend/main.go:596) | 收藏文章                        |
+| `DELETE /api/articles/:id/star`     | [`main.go:614-628`](backend/main.go:614) | 取消收藏文章                    |
 
 ### 4.2 前端模块
 

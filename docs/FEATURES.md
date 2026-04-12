@@ -140,12 +140,14 @@ sources.DELETE("/:id", func(c *gin.Context) {
     // 删除订阅源
     db.SourceCollection.DeleteOne(context.Background(), bson.M{"_id": id})
 
-    // 删除关联文章
-    db.ArticleCollection.DeleteMany(context.Background(), bson.M{"sourceId": id})
+    // 删除关联文章（保留已收藏的文章）
+    db.ArticleCollection.DeleteMany(context.Background(), bson.M{"sourceId": id, "isStarred": false})
 
     c.JSON(200, gin.H{"status": "ok"})
 })
 ```
+
+**注意**：删除订阅源时，已收藏的文章会被保留，其 sourceId 保持不变。当重新订阅同一 URL 时，系统会自动将孤立已收藏文章的 sourceId 更新到新订阅源，避免重复。
 
 ### 2.2 文章获取
 
@@ -571,15 +573,28 @@ func init() {
 | ------ | --------------------------- | ----------- | ------------------ |
 | POST   | `/api/sources`              | main.go:168 | 添加订阅源         |
 | GET    | `/api/sources`              | main.go:236 | 获取所有订阅源     |
-| DELETE | `/api/sources/:id`          | main.go:254 | 删除订阅源         |
+| DELETE | `/api/sources/:id`          | main.go:254 | 删除订阅源（保留收藏）|
 | GET    | `/api/sources/:id/articles` | main.go:279 | 获取订阅源下的文章 |
+| PUT    | `/api/sources/:id/group`    | main.go:334 | 将订阅源分配到分组 |
 
-### 3.2 文章接口
+### 3.2 分组接口
 
-| 方法 | 路径                           | 代码位置    | 说明         |
-| ---- | ------------------------------ | ----------- | ------------ |
-| GET  | `/api/articles/:id`            | main.go:307 | 获取单篇文章 |
-| POST | `/api/articles/:id/ai-summary` | main.go:325 | 生成 AI 摘要 |
+| 方法   | 路径                  | 代码位置    | 说明         |
+| ------ | --------------------- | ----------- | ------------ |
+| POST   | `/api/groups`         | main.go:375 | 创建分组     |
+| GET    | `/api/groups`         | main.go:399 | 获取所有分组 |
+| PUT    | `/api/groups/:id`     | main.go:420 | 更新分组     |
+| DELETE | `/api/groups/:id`     | main.go:447 | 删除分组     |
+
+### 3.3 文章接口
+
+| 方法   | 路径                           | 代码位置    | 说明         |
+| ------ | ------------------------------ | ----------- | ------------ |
+| GET    | `/api/articles/starred`        | main.go:496 | 获取收藏文章 |
+| GET    | `/api/articles/:id`            | main.go:515 | 获取单篇文章 |
+| POST   | `/api/articles/:id/ai-summary` | main.go:533 | 生成 AI 摘要 |
+| POST   | `/api/articles/:id/star`       | main.go:596 | 收藏文章     |
+| DELETE | `/api/articles/:id/star`       | main.go:614 | 取消收藏     |
 
 ## 4. 用户界面
 
