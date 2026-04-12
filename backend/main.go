@@ -229,7 +229,28 @@ func main() {
 				}
 				sourceID := res.InsertedID.(primitive.ObjectID)
 
-				var articles []interface{}
+				// Fix duplicate starred articles issue - move orphaned starred articles to new source BEFORE checking for duplicates
+				for _, item := range feed.Items {
+					var existingStarred Article
+					findFilter := bson.M{"guid": item.GUID, "isStarred": true}
+					err := db.ArticleCollection.FindOne(context.Background(), findFilter).Decode(&existingStarred)
+					if err == nil {
+						var source FeedSource
+						sourceErr := db.SourceCollection.FindOne(context.Background(), bson.M{"_id": existingStarred.SourceID}).Decode(&source)
+						if sourceErr == mongo.ErrNoDocuments {
+							_, updateErr := db.ArticleCollection.UpdateOne(
+								context.Background(),
+								bson.M{"_id": existingStarred.ID},
+								bson.M{"$set": bson.M{"sourceId": sourceID}},
+							)
+							if updateErr != nil {
+								log.Printf("Failed to update orphaned starred article: %v", updateErr)
+							}
+						}
+					}
+				}
+
+				// Insert articles with deduplication
 				for _, item := range feed.Items {
 					content := item.Content
 					if content == "" {
@@ -239,24 +260,25 @@ func main() {
 					if item.PublishedParsed != nil {
 						publishedAt = item.PublishedParsed
 					}
-					article := Article{
-						SourceID:    sourceID,
-						GUID:        item.GUID,
-						Title:       item.Title,
-						URL:         item.Link,
-						Description: item.Description,
-						Content:     content,
-						PublishedAt: publishedAt,
-					}
-					articles = append(articles, article)
-				}
 
-				if len(articles) > 0 {
-					opts := options.InsertMany().SetOrdered(false)
-					_, err = db.ArticleCollection.InsertMany(context.Background(), articles, opts)
-					if err != nil {
-						// Log the error but don't fail the request for adding the source
-						log.Printf("Failed to insert articles for source %s: %v", sourceID.Hex(), err)
+					// Check if article already exists for this source
+					filter := bson.M{"guid": item.GUID, "sourceId": sourceID}
+					err := db.ArticleCollection.FindOne(context.Background(), filter).Err()
+					if err == mongo.ErrNoDocuments {
+						// Article doesn't exist, insert it
+						article := Article{
+							SourceID:    sourceID,
+							GUID:        item.GUID,
+							Title:       item.Title,
+							URL:         item.Link,
+							Description: item.Description,
+							Content:     content,
+							PublishedAt: publishedAt,
+						}
+						_, insertErr := db.ArticleCollection.InsertOne(context.Background(), article)
+						if insertErr != nil {
+							log.Printf("Failed to insert article %s: %v", item.GUID, insertErr)
+						}
 					}
 				}
 
@@ -470,6 +492,25 @@ func main() {
 		// Article routes
 		articles := api.Group("/articles")
 		{
+			// Get all starred articles
+			articles.GET("/starred", func(c *gin.Context) {
+				filter := bson.M{"isStarred": true}
+				cursor, err := db.ArticleCollection.Find(context.Background(), filter)
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to fetch starred articles"})
+					return
+				}
+				defer cursor.Close(context.Background())
+
+				articles := []Article{}
+				if err = cursor.All(context.Background(), &articles); err != nil {
+					c.JSON(500, gin.H{"error": "Failed to decode articles"})
+					return
+				}
+
+				c.JSON(200, articles)
+			})
+
 			// Get a single article by its ID
 			articles.GET("/:id", func(c *gin.Context) {
 				id, err := primitive.ObjectIDFromHex(c.Param("id"))
@@ -585,25 +626,6 @@ func main() {
 				}
 
 				c.JSON(200, gin.H{"status": "ok", "isStarred": false})
-			})
-
-			// Get all starred articles
-			articles.GET("/starred", func(c *gin.Context) {
-				filter := bson.M{"isStarred": true}
-				cursor, err := db.ArticleCollection.Find(context.Background(), filter)
-				if err != nil {
-					c.JSON(500, gin.H{"error": "Failed to fetch starred articles"})
-					return
-				}
-				defer cursor.Close(context.Background())
-
-				var articles []Article
-				if err = cursor.All(context.Background(), &articles); err != nil {
-					c.JSON(500, gin.H{"error": "Failed to decode articles"})
-					return
-				}
-
-				c.JSON(200, articles)
 			})
 		}
 	}
