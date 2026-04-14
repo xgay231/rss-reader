@@ -155,6 +155,137 @@
 
 ---
 
+### Phase 5: 用户认证系统 ❌ 进行中
+
+**目标**：实现 JWT + bcrypt 多用户认证系统，为现有数据模型添加用户隔离
+
+**技术方案**：
+
+- **密码加密**: bcrypt (cost 12)
+- **Token**: JWT access token (15分钟) + refresh token (7天)
+- **认证架构**: 公开路由 `/api/auth/*`，保护路由需携带有效 JWT
+
+**任务**：
+
+#### 5.1 后端 - User 模型与数据库
+
+- [ ] 5.1.1 创建 `backend/models/user.go` - User 模型定义
+
+  ```go
+  type User struct {
+      ID           primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+      Email        string             `json:"email" bson:"email"`
+      Username     string             `json:"username" bson:"username"`
+      PasswordHash string             `json:"-" bson:"passwordHash"`
+      CreatedAt    time.Time          `json:"createdAt" bson:"createdAt"`
+      UpdatedAt    time.Time          `json:"updatedAt" bson:"updatedAt"`
+  }
+  ```
+
+- [ ] 5.1.2 修改 `backend/db/db.go` - 添加 UserCollection 和 email 唯一索引
+
+- [ ] 5.1.3 修改 `backend/main.go` - 为 Group、FeedSource、Article 添加 UserID 字段
+
+  ```go
+  type Group struct {
+      // ... 现有字段
+      UserID primitive.ObjectID `json:"userId" bson:"userId"`
+  }
+  type FeedSource struct {
+      // ... 现有字段
+      UserID primitive.ObjectID `json:"userId" bson:"userId"`
+  }
+  type Article struct {
+      // ... 现有字段
+      UserID primitive.ObjectID `json:"userId" bson:"userId"`
+  }
+  ```
+
+#### 5.2 后端 - 认证中间件与 Handler
+
+- [ ] 5.2.1 创建 `backend/middleware/auth.go` - JWT 验证中间件
+
+  - 从 `Authorization: Bearer <token>` 提取 token
+  - 验证 token 签名和过期时间
+  - 验证通过后将 userID 注入 `c.Set("userID", userID)`
+  - 验证失败返回 401
+
+- [ ] 5.2.2 创建 `backend/handlers/auth.go` - 认证 API Handler
+
+  | 端点 | 方法 | 说明 |
+  |------|------|------|
+  | `/api/auth/register` | POST | 注册 (email, username, password) |
+  | `/api/auth/login` | POST | 登录，返回 accessToken + refreshToken |
+  | `/api/auth/refresh` | POST | 刷新令牌 |
+  | `/api/auth/logout` | POST | 登出 |
+  | `/api/auth/me` | GET | 获取当前用户信息 |
+
+- [ ] 5.2.3 修改 `backend/main.go` - 添加认证路由和保护现有 API
+
+  - 添加公开路由 `/api/auth/*` (无需认证)
+  - 现有 `/api/sources`, `/api/groups`, `/api/articles` 应用 AuthMiddleware
+  - 所有数据库查询添加 `userId` 过滤条件
+
+- [ ] 5.2.4 添加依赖
+
+  ```bash
+  go get github.com/golang-jwt/jwt/v5
+  go get golang.org/x/crypto/bcrypt
+  ```
+
+#### 5.3 前端 - 认证状态与 UI
+
+- [ ] 5.3.1 创建 `frontend/src/composables/useAuth.js` - 认证状态管理
+
+  - 使用 Vue 3 Composition API `provide/inject` 模式
+  - 管理 user, accessToken, refreshToken 状态
+  - 提供 login, logout, fetchCurrentUser, refreshAccessToken 方法
+  - Token 存储在 localStorage
+
+- [ ] 5.3.2 创建 `frontend/src/utils/api.js` - 带认证的 fetch 封装
+
+  - `fetchWithAuth()` 自动携带 Authorization 头
+  - 401 响应时自动刷新 token 并重试
+
+- [ ] 5.3.3 创建 `frontend/src/components/AuthForm.vue` - 登录/注册组件
+
+  - 登录/注册表单切换
+  - 表单验证 (email 格式, 密码最少 6 位)
+
+- [ ] 5.3.4 修改 `frontend/src/main.js` - 导入并调用 `provideAuth()`
+
+- [ ] 5.3.5 修改 `frontend/src/App.vue`
+
+  - 未登录时显示 AuthForm
+  - 已登录显示主界面三栏布局
+  - `onMounted` 时自动检查登录状态
+
+**相关文件**：
+
+- `backend/models/user.go` - 新建
+- `backend/middleware/auth.go` - 新建
+- `backend/handlers/auth.go` - 新建
+- `backend/db/db.go` - 修改
+- `backend/main.go` - 修改
+- `frontend/src/composables/useAuth.js` - 新建
+- `frontend/src/utils/api.js` - 新建
+- `frontend/src/components/AuthForm.vue` - 新建
+- `frontend/src/App.vue` - 修改
+- `frontend/src/main.js` - 修改
+
+**数据迁移**：
+
+现有数据需要一次性迁移添加 userId：
+
+```javascript
+// MongoDB shell
+db.groups.updateMany({}, { $set: { userId: ObjectId("目标用户ID") } })
+db.sources.updateMany({}, { $set: { userId: ObjectId("目标用户ID") } })
+db.articles.updateMany({}, { $set: { userId: ObjectId("目标用户ID") } })
+```
+
+---
+
 ## 4. 任务依赖关系
 
 ```
