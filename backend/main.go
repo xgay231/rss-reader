@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"rss-reader/backend/db"
+	"rss-reader/backend/handlers"
+	"rss-reader/backend/middleware"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -191,8 +193,25 @@ func main() {
 	// API routes
 	api := router.Group("/api")
 	{
-		// Source routes
+		// Auth routes (public)
+		auth := api.Group("/auth")
+		{
+			auth.POST("/register", handlers.Register)
+			auth.POST("/login", handlers.Login)
+			auth.POST("/refresh", handlers.Refresh)
+			auth.POST("/logout", handlers.Logout)
+		}
+
+		// Protected routes - require authentication
+		protected := api.Group("")
+		protected.Use(middleware.AuthMiddleware())
+		{
+			protected.GET("/auth/me", handlers.GetMe)
+		}
+
+		// Source routes (protected)
 		sources := api.Group("/sources")
+		sources.Use(middleware.AuthMiddleware())
 		{
 			// Add a new feed source
 			sources.POST("", func(c *gin.Context) {
@@ -393,8 +412,9 @@ func main() {
 			})
 		}
 
-		// Group routes
+		// Group routes (protected)
 		groups := api.Group("/groups")
+		groups.Use(middleware.AuthMiddleware())
 		{
 			// Create a group
 			groups.POST("", func(c *gin.Context) {
@@ -492,8 +512,9 @@ func main() {
 			})
 		}
 
-		// Article routes
+		// Article routes (protected)
 		articles := api.Group("/articles")
+		articles.Use(middleware.AuthMiddleware())
 		{
 			// Get all starred articles
 			articles.GET("/starred", func(c *gin.Context) {
