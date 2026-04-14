@@ -12,6 +12,7 @@ const auth = provideAuth()
 const articles = ref([]);
 const selectedArticle = ref(null);
 const sourceListRef = ref(null);
+const currentSourceId = ref(null); // Track current source ID to detect starred view
 
 // Mobile navigation state - stack based navigation
 const currentView = ref("sources"); // 'sources' | 'articles' | 'content'
@@ -108,11 +109,13 @@ const handleSourceSelected = async (source) => {
   if (!source) {
     articles.value = [];
     selectedArticle.value = null;
+    currentSourceId.value = null;
     return;
   }
 
   // Handle starred articles special case
   if (source.id === "starred") {
+    currentSourceId.value = "starred";
     try {
       const response = await fetchWithAuth("/api/articles/starred");
       if (!response.ok) {
@@ -128,6 +131,7 @@ const handleSourceSelected = async (source) => {
     return;
   }
 
+  currentSourceId.value = source.id;
   try {
     const response = await fetchWithAuth(`/api/sources/${source.id}/articles`);
     if (!response.ok) {
@@ -164,10 +168,27 @@ const handleSummaryUpdated = (updatedArticle) => {
   selectedArticle.value = updatedArticle;
 };
 
-// Refresh starred count when article is starred/unstarred
-const refreshStarredCount = () => {
+// Refresh starred count and list when article is starred/unstarred
+const refreshStarredCount = async () => {
   if (sourceListRef.value) {
     sourceListRef.value.refreshStarredCount();
+  }
+
+  // If viewing starred articles list, refresh it
+  if (currentSourceId.value === "starred") {
+    try {
+      const response = await fetchWithAuth("/api/articles/starred");
+      if (response.ok) {
+        articles.value = await response.json();
+        // If currently viewing an article that was unstarred, close it
+        if (selectedArticle.value && !articles.value.find(a => a.id === selectedArticle.value.id)) {
+          selectedArticle.value = null;
+          currentView.value = "articles";
+        }
+      }
+    } catch (error) {
+      console.error("Error refreshing starred articles:", error);
+    }
   }
 };
 </script>
