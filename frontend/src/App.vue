@@ -1,8 +1,13 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from "vue";
+import { provideAuth, useAuth } from "./composables/useAuth";
+import { fetchWithAuth } from "./utils/api";
 import SourceList from "./components/SourceList.vue";
 import ArticleList from "./components/ArticleList.vue";
 import ArticleView from "./components/ArticleView.vue";
+import AuthForm from "./components/AuthForm.vue";
+
+const auth = provideAuth()
 
 const articles = ref([]);
 const selectedArticle = ref(null);
@@ -26,6 +31,8 @@ const updateWindowWidth = () => {
 
 onMounted(() => {
   window.addEventListener("resize", updateWindowWidth);
+  // Check login status on mount
+  auth.fetchCurrentUser();
 });
 
 onUnmounted(() => {
@@ -87,7 +94,7 @@ const handleSourceSelected = async (source) => {
   // Handle starred articles special case
   if (source.id === "starred") {
     try {
-      const response = await fetch("/api/articles/starred");
+      const response = await fetchWithAuth("/api/articles/starred");
       if (!response.ok) {
         throw new Error("Failed to fetch starred articles");
       }
@@ -102,7 +109,7 @@ const handleSourceSelected = async (source) => {
   }
 
   try {
-    const response = await fetch(`/api/sources/${source.id}/articles`);
+    const response = await fetchWithAuth(`/api/sources/${source.id}/articles`);
     if (!response.ok) {
       throw new Error("Failed to fetch articles for the source");
     }
@@ -119,7 +126,7 @@ const handleSourceSelected = async (source) => {
 const handleArticleSelected = async (article) => {
   // Fetch full article to ensure we have summary field
   try {
-    const response = await fetch(`/api/articles/${article.id}`);
+    const response = await fetchWithAuth(`/api/articles/${article.id}`);
     if (response.ok) {
       selectedArticle.value = await response.json();
     } else {
@@ -147,7 +154,11 @@ const refreshStarredCount = () => {
 
 <template>
   <div id="app-container">
-    <!-- Mobile Header with Back Button -->
+    <!-- Auth Form when not logged in -->
+    <AuthForm v-if="!auth.isAuthenticated()" />
+
+    <!-- Main App when logged in -->
+    <template v-else>
     <header class="mobile-header" v-if="isMobile && currentView !== 'sources'">
       <button class="back-btn" @click="goBack">返回</button>
       <span class="header-title">
@@ -200,6 +211,7 @@ const refreshStarredCount = () => {
         @summary-updated="handleSummaryUpdated"
       />
     </div>
+    </template>
   </div>
 </template>
 

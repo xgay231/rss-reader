@@ -1,5 +1,6 @@
 import * as tf from '@tensorflow/tfjs';
 import * as use from '@tensorflow-models/universal-sentence-encoder';
+import { fetchWithAuth } from '../utils/api';
 
 let model = null;
 
@@ -165,7 +166,7 @@ export async function summarizeText(content, numSentences = 3, lambda = 0.7) {
  */
 export async function generateAISummary(articleId) {
   try {
-    const response = await fetch(`/api/articles/${articleId}/ai-summary`, {
+    const response = await fetchWithAuth(`/api/articles/${articleId}/ai-summary`, {
       method: 'POST',
     });
 

@@ -4,6 +4,7 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { detectContentType } from "../utils/contentDetector.js";
 import { generateAISummary } from "../services/summarizer.js";
+import { fetchWithAuth } from "../utils/api";
 
 // This component receives the selected article as a prop
 const props = defineProps({
@@ -119,7 +120,7 @@ const toggleStar = async () => {
   if (!props.article || !props.article.id) return;
 
   const method = props.article.isStarred ? 'DELETE' : 'POST';
-  const response = await fetch(`/api/articles/${props.article.id}/star`, {
+  const response = await fetchWithAuth(`/api/articles/${props.article.id}/star`, {
     method,
   });
 

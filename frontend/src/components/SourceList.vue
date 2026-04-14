@@ -1,5 +1,9 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { fetchWithAuth } from '../utils/api';
+import { useAuth } from '../composables/useAuth';
+
+const auth = useAuth()
 
 const sources = ref([]);
 const groups = ref([]);
@@ -13,6 +17,7 @@ const collapsedGroups = ref({});
 const openMenuSourceId = ref(null);
 const showSubmenu = ref(null);
 const submenuLeft = ref({}); // Track if submenu should open to the left
+const showUserMenu = ref(false);
 
 // Drag state
 const draggingType = ref(null); // 'group' or 'source'
@@ -26,6 +31,9 @@ const emit = defineEmits(['source-selected']);
 const handleClickOutside = (event) => {
   if (!event.target.closest('.source-item') && !event.target.closest('.dropdown-menu')) {
     openMenuSourceId.value = null;
+  }
+  if (!event.target.closest('.user-menu-container')) {
+    showUserMenu.value = false;
   }
 };
 
@@ -67,7 +75,7 @@ const onGroupDrop = async (e, targetGroup) => {
     const source = sources.value.find(s => s.id === draggingId.value);
     if (source && source.groupId !== targetGroup.id) {
       try {
-        const response = await fetch(`/api/sources/${source.id}/group`, {
+        const response = await fetchWithAuth(`/api/sources/${source.id}/group`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ groupId: targetGroup.id }),
@@ -100,7 +108,7 @@ const onGroupDropToUngrouped = async (e) => {
     const source = sources.value.find(s => s.id === draggingId.value);
     if (source && source.groupId) {
       try {
-        const response = await fetch(`/api/sources/${source.id}/group`, {
+        const response = await fetchWithAuth(`/api/sources/${source.id}/group`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ groupId: '' }),
@@ -138,7 +146,7 @@ const onSourceDragEnd = () => {
 
 const fetchGroups = async () => {
   try {
-    const response = await fetch('/api/groups');
+    const response = await fetchWithAuth('/api/groups');
     if (response.ok) {
       const data = await response.json();
       groups.value = data || [];
@@ -150,7 +158,7 @@ const fetchGroups = async () => {
 
 const fetchSources = async () => {
   try {
-    const response = await fetch('/api/sources');
+    const response = await fetchWithAuth('/api/sources');
     if (!response.ok) {
       throw new Error('Network response was not ok');
     }
@@ -163,7 +171,7 @@ const fetchSources = async () => {
 
 const fetchStarredCount = async () => {
   try {
-    const starResponse = await fetch('/api/articles/starred');
+    const starResponse = await fetchWithAuth('/api/articles/starred');
     if (starResponse.ok) {
       const starredArticles = await starResponse.json();
       starredCount.value = starredArticles.length;
@@ -191,7 +199,7 @@ const addSource = async () => {
     return;
   }
   try {
-    const response = await fetch('/api/sources', {
+    const response = await fetchWithAuth('/api/sources', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -223,7 +231,7 @@ const addGroup = async () => {
     return;
   }
   try {
-    const response = await fetch('/api/groups', {
+    const response = await fetchWithAuth('/api/groups', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -251,7 +259,7 @@ const deleteGroup = async (groupId, event) => {
     return;
   }
   try {
-    const response = await fetch(`/api/groups/${groupId}`, {
+    const response = await fetchWithAuth(`/api/groups/${groupId}`, {
       method: 'DELETE',
     });
     if (!response.ok) {
@@ -281,7 +289,7 @@ const saveEditGroup = async () => {
     return;
   }
   try {
-    const response = await fetch(`/api/groups/${editingGroupId.value}`, {
+    const response = await fetchWithAuth(`/api/groups/${editingGroupId.value}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -330,8 +338,14 @@ const selectSource = (source) => {
 const selectStarred = async () => {
   selectedSourceId.value = 'starred';
   openMenuSourceId.value = null; // Close dropdown menu
-  emit('source-selected', { id: 'starred', name: '收藏夹' });
   await fetchStarredCount();
+  // If no starred articles, deselect and emit with empty list
+  if (starredCount.value === 0) {
+    selectedSourceId.value = null;
+    emit('source-selected', null);
+    return;
+  }
+  emit('source-selected', { id: 'starred', name: '收藏夹' });
 };
 
 // Refresh starred count
@@ -348,7 +362,7 @@ const deleteSource = async (sourceId, event) => {
     return;
   }
   try {
-    const response = await fetch(`/api/sources/${sourceId}`, {
+    const response = await fetchWithAuth(`/api/sources/${sourceId}`, {
       method: 'DELETE',
     });
     if (!response.ok) {
@@ -370,7 +384,7 @@ const assignSourceToGroup = async (source, groupId, event) => {
   event.stopPropagation();
   openMenuSourceId.value = null; // Close dropdown menu
   try {
-    const response = await fetch(`/api/sources/${source.id}/group`, {
+    const response = await fetchWithAuth(`/api/sources/${source.id}/group`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -400,7 +414,25 @@ const toggleMenu = (sourceId) => {
 
 // Toggle group collapse
 const toggleGroupCollapse = (groupId) => {
+  selectedSourceId.value = null; // Clear selection when clicking groups
   collapsedGroups.value[groupId] = !collapsedGroups.value[groupId];
+};
+
+// User menu
+const toggleUserMenu = () => {
+  showUserMenu.value = !showUserMenu.value;
+};
+
+const handleLogout = async () => {
+  showUserMenu.value = false;
+  await auth.logout();
+};
+
+// Close user menu when clicking outside
+const handleUserMenuClickOutside = (event) => {
+  if (!event.target.closest('.user-menu-container')) {
+    showUserMenu.value = false;
+  }
 };
 </script>
 
@@ -437,7 +469,60 @@ const toggleGroupCollapse = (groupId) => {
         <span class="star-count" v-if="starredCount > 0">{{ starredCount }}</span>
       </li>
 
-      <!-- Groups -->
+      <!-- Default: Ungrouped sources (always visible) -->
+      <li
+        class="group-item ungrouped"
+        :class="{ 'drag-over': dragOverType === 'group' && dragOverId === '_ungrouped' }"
+        @dragover="onGroupDragOver($event, { id: '_ungrouped' })"
+        @drop="onGroupDropToUngrouped($event)"
+        @dragend="onGroupDragEnd"
+      >
+        <div
+          class="group-header"
+          @click="toggleGroupCollapse('_ungrouped')"
+        >
+          <span class="collapse-icon">{{ collapsedGroups['_ungrouped'] ? '▶' : '▼' }}</span>
+          <span class="group-name">未分组</span>
+        </div>
+        <ul class="source-list nested" v-if="!collapsedGroups['_ungrouped']">
+          <li
+            v-for="source in groupedSources['_ungrouped']"
+            :key="source.id"
+            class="source-item"
+            :class="{ selected: source.id === selectedSourceId }"
+            draggable="true"
+            @dragstart="onSourceDragStart($event, source)"
+            @dragend="onSourceDragEnd"
+            @click="selectSource(source)"
+          >
+            <span class="source-name">{{ source.name }}</span>
+            <div class="more-btn" @click.stop="toggleMenu(source.id)">⋮</div>
+            <!-- Dropdown menu -->
+            <div class="dropdown-menu" v-if="openMenuSourceId === source.id">
+              <div class="menu-item has-submenu" :class="{ 'submenu-left': submenuLeft[source.id] }" @mouseenter="showSubmenu = source.id" @mouseleave="showSubmenu = null" @click.stop="toggleSubmenu(source.id, $event)">
+                <span>分组</span>
+                <span class="arrow">›</span>
+                <!-- Submenu -->
+                <div class="submenu" v-if="showSubmenu === source.id">
+                  <div class="menu-item" @click="assignSourceToGroup(source, '', $event)">无分组</div>
+                  <div
+                    v-for="g in groups"
+                    :key="g.id"
+                    class="menu-item"
+                    :class="{ active: source.groupId === g.id }"
+                    @click="assignSourceToGroup(source, g.id, $event)"
+                  >
+                    {{ g.name }}
+                  </div>
+                </div>
+              </div>
+              <div class="menu-item danger" @click="deleteSource(source.id, $event)">删除</div>
+            </div>
+          </li>
+        </ul>
+      </li>
+
+      <!-- Other groups -->
       <li
         v-for="group in groups"
         :key="group.id"
@@ -506,68 +591,28 @@ const toggleGroupCollapse = (groupId) => {
           </li>
         </ul>
       </li>
-
-      <!-- Ungrouped sources -->
-      <li
-        class="group-item ungrouped"
-        v-if="groupedSources['_ungrouped'] && groupedSources['_ungrouped'].length > 0"
-        :class="{ 'drag-over': dragOverType === 'group' && dragOverId === '_ungrouped' }"
-        draggable="true"
-        @dragstart="onGroupDragStart($event, { id: '_ungrouped', name: '未分组' })"
-        @dragover="onGroupDragOver($event, { id: '_ungrouped' })"
-        @drop="onGroupDropToUngrouped($event)"
-        @dragend="onGroupDragEnd"
-      >
-        <div
-          class="group-header"
-          @click="toggleGroupCollapse('_ungrouped')"
-        >
-          <span class="collapse-icon">{{ collapsedGroups['_ungrouped'] ? '▶' : '▼' }}</span>
-          <span class="group-name">未分组</span>
-        </div>
-        <ul class="source-list nested" v-if="!collapsedGroups['_ungrouped']">
-          <li
-            v-for="source in groupedSources['_ungrouped']"
-            :key="source.id"
-            class="source-item"
-            :class="{ selected: source.id === selectedSourceId }"
-            draggable="true"
-            @dragstart="onSourceDragStart($event, source)"
-            @dragend="onSourceDragEnd"
-            @click="selectSource(source)"
-          >
-            <span class="source-name">{{ source.name }}</span>
-            <div class="more-btn" @click.stop="toggleMenu(source.id)">⋮</div>
-            <!-- Dropdown menu -->
-            <div class="dropdown-menu" v-if="openMenuSourceId === source.id">
-              <div class="menu-item has-submenu" :class="{ 'submenu-left': submenuLeft[source.id] }" @mouseenter="showSubmenu = source.id" @mouseleave="showSubmenu = null" @click.stop="toggleSubmenu(source.id, $event)">
-                <span>分组</span>
-                <span class="arrow">›</span>
-                <!-- Submenu -->
-                <div class="submenu" v-if="showSubmenu === source.id">
-                  <div class="menu-item" @click="assignSourceToGroup(source, '', $event)">无分组</div>
-                  <div
-                    v-for="g in groups"
-                    :key="g.id"
-                    class="menu-item"
-                    :class="{ active: source.groupId === g.id }"
-                    @click="assignSourceToGroup(source, g.id, $event)"
-                  >
-                    {{ g.name }}
-                  </div>
-                </div>
-              </div>
-              <div class="menu-item danger" @click="deleteSource(source.id, $event)">删除</div>
-            </div>
-          </li>
-        </ul>
-      </li>
     </ul>
+
+    <!-- User Menu -->
+    <div class="user-menu-container">
+      <div class="user-info" @click="toggleUserMenu">
+        <div class="user-avatar">
+          {{ auth.user.value?.username?.charAt(0).toUpperCase() || 'U' }}
+        </div>
+        <span class="user-name">{{ auth.user.value?.username || 'User' }}</span>
+        <span class="user-menu-arrow">{{ showUserMenu ? '▲' : '▼' }}</span>
+      </div>
+      <div class="user-dropdown" v-if="showUserMenu">
+        <div class="menu-item" @click="showUserMenu = false">设置</div>
+        <div class="menu-item danger" @click="handleLogout">退出登录</div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .source-list-container {
+  position: relative;
   padding: 1rem;
   border-right: 1px solid var(--color-border);
   height: 100vh;
@@ -641,6 +686,8 @@ li {
   cursor: pointer;
   transition: background-color 0.2s;
   color: var(--color-accent);
+  box-sizing: border-box;
+  height: 44px; /* Fixed height to match group headers */
 }
 
 .starred-item:hover, .starred-item.selected {
@@ -671,6 +718,8 @@ li {
   cursor: pointer;
   transition: background-color 0.2s;
   gap: 0.25rem;
+  box-sizing: border-box;
+  height: 44px; /* Fixed height to match starred-item */
 }
 
 .group-header:hover {
@@ -715,6 +764,8 @@ li {
   border-bottom: 1px solid var(--color-border);
   cursor: pointer;
   transition: background-color 0.2s;
+  box-sizing: border-box;
+  height: 44px; /* Fixed height to match headers */
 }
 
 .source-item.drag-over {
@@ -827,5 +878,72 @@ li {
   border-radius: 10px;
   min-width: 1.2rem;
   text-align: center;
+}
+
+.user-menu-container {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 1rem;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-pane);
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.user-info:hover {
+  background-color: var(--color-bg-item-hover);
+}
+
+.user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: var(--color-accent);
+  color: var(--color-accent-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.user-name {
+  flex: 1;
+  font-size: 0.9rem;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-menu-arrow {
+  font-size: 0.6rem;
+  color: var(--color-text-secondary);
+}
+
+.user-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 1rem;
+  right: 1rem;
+  background: var(--color-bg-pane);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.15);
+  z-index: 100;
+}
+
+.user-dropdown .menu-item {
+  padding: 0.75rem 1rem;
 }
 </style>
