@@ -10,6 +10,8 @@ import (
 )
 
 var Client *mongo.Client
+var DB *mongo.Database
+var UserCollection *mongo.Collection
 var ArticleCollection *mongo.Collection
 var SourceCollection *mongo.Collection
 var GroupCollection *mongo.Collection
@@ -29,7 +31,20 @@ func ConnectDatabase() {
 	}
 	log.Println("Successfully connected to MongoDB!")
 	Client = client
-	ArticleCollection = client.Database("rss_reader").Collection("articles")
-	SourceCollection = client.Database("rss_reader").Collection("sources")
-	GroupCollection = client.Database("rss_reader").Collection("groups")
+	DB = client.Database("rss_reader")
+	UserCollection = DB.Collection("users")
+	ArticleCollection = DB.Collection("articles")
+	SourceCollection = DB.Collection("sources")
+	GroupCollection = DB.Collection("groups")
+
+	// Create unique index on email
+	_, err = UserCollection.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    map[string]interface{}{"email": 1},
+		Options: options.Index().SetUnique(true),
+	})
+	if err != nil {
+		log.Printf("Warning: failed to create email index: %v", err)
+	} else {
+		log.Println("User email index created successfully")
+	}
 }

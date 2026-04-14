@@ -64,6 +64,7 @@ func init() {
 // Group represents a feed source group
 type Group struct {
 	ID        primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	UserID    primitive.ObjectID `json:"userId" bson:"userId"`
 	Name      string             `json:"name" bson:"name"`
 	SortOrder int                `json:"sortOrder" bson:"sortOrder"`
 	CreatedAt time.Time          `json:"createdAt" bson:"createdAt"`
@@ -72,6 +73,7 @@ type Group struct {
 // FeedSource represents an RSS feed source
 type FeedSource struct {
 	ID      primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	UserID  primitive.ObjectID `json:"userId" bson:"userId"`
 	Name    string             `json:"name" bson:"name"`
 	URL     string             `json:"url" bson:"url"`
 	GroupID primitive.ObjectID `json:"groupId" bson:"groupId"`
@@ -80,6 +82,7 @@ type FeedSource struct {
 // Article represents a single RSS feed item
 type Article struct {
 	ID                 primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	UserID             primitive.ObjectID `json:"userId" bson:"userId"`
 	SourceID           primitive.ObjectID `json:"sourceId" bson:"sourceId"`
 	GUID               string             `json:"guid" bson:"guid"`
 	Title              string             `json:"title" bson:"title"`
