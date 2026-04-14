@@ -286,6 +286,83 @@ db.articles.updateMany({}, { $set: { userId: ObjectId("目标用户ID") } })
 
 ---
 
+### Phase 6: 多用户数据隔离 ✅ 已完成
+
+**目标**：实现用户数据隔离，不同用户只能访问自己的数据
+
+**问题**：Phase 5 添加了 UserID 字段，但 API 尚未按用户过滤，导致用户可以看到彼此的数据
+
+**任务**：
+
+#### 6.1 中间件修改
+
+- [x] 6.1.1 修改 `backend/middleware/auth.go` - 确认 userID 正确存入 context (已实现)
+
+  ```go
+  func AuthMiddleware() gin.HandlerFunc {
+      return func(c *gin.Context) {
+          // ... token 验证 ...
+          c.Set("userID", claims.UserID)  // 确保存入 context
+          c.Next()
+      }
+  }
+  ```
+
+#### 6.2 Sources API 修改
+
+- [x] 6.2.1 `POST /api/sources` - 添加新源时设置 `userId`
+- [x] 6.2.2 `GET /api/sources` - 查询添加 `userId` 过滤
+- [x] 6.2.3 `DELETE /api/sources/:id` - 删除条件添加 `userId`
+- [x] 6.2.4 `GET /api/sources/:id/articles` - 查询添加 `userId` 过滤
+- [x] 6.2.5 `PUT /api/sources/:id/group` - 更新条件添加 `userId`
+
+#### 6.3 Groups API 修改
+
+- [x] 6.3.1 `POST /api/groups` - 创建分组时设置 `userId`
+- [x] 6.3.2 `GET /api/groups` - 查询添加 `userId` 过滤
+- [x] 6.3.3 `PUT /api/groups/:id` - 更新条件添加 `userId`
+- [x] 6.3.4 `DELETE /api/groups/:id` - 删除条件添加 `userId`
+
+#### 6.4 Articles API 修改
+
+- [x] 6.4.1 `GET /api/articles/starred` - 查询添加 `userId` 过滤
+- [x] 6.4.2 `GET /api/articles/:id` - 查询添加 `userId` 过滤
+- [x] 6.4.3 `POST /api/articles/:id/ai-summary` - 验证 article 属于当前用户
+- [x] 6.4.4 `POST /api/articles/:id/star` - 验证 article 属于当前用户
+- [x] 6.4.5 `DELETE /api/articles/:id/star` - 验证 article 属于当前用户
+
+#### 6.5 辅助函数
+
+- [x] 6.5.1 在 `backend/main.go` 添加 `getUserID(c *gin.Context)` 辅助函数
+
+  ```go
+  func getUserID(c *gin.Context) primitive.ObjectID {
+      userID, exists := c.Get("userID")
+      if !exists {
+          return primitive.NilObjectID
+      }
+      id, err := primitive.ObjectIDFromHex(userID.(string))
+      if err != nil {
+          return primitive.NilObjectID
+      }
+      return id
+  }
+  ```
+
+#### 6.6 前端修改
+
+- [ ] 6.6.1 `fetchWithAuth` 已正确实现（无需修改）
+
+#### 6.7 测试验证
+
+测试多用户数据隔离：
+1. 用户A登录，添加订阅源 → 数据带有 `userId=A`
+2. 用户B登录，无法看到用户A的订阅源
+3. 用户B添加订阅源 → 数据带有 `userId=B`
+4. 用户A登录，只能看到自己的订阅源
+
+---
+
 ## 4. 任务依赖关系
 
 ```
@@ -293,10 +370,13 @@ Phase 1 (文章列表) ✅
 Phase 2 (订阅源分组) ✅  ←→  Phase 3 (收藏夹) ✅
             ↓                    ↓
         Phase 4 (响应式优化) ✅
+                    ↓
+        Phase 5 (用户认证) ✅ ← Phase 6 (数据隔离) ✅
 ```
 
-- Phase 1, 2, 3, 4 均已完成
-- 后续可进行多用户认证等高级功能
+- Phase 1, 2, 3, 4, 5 均已完成
+- Phase 6 数据隔离已完成
+- 后续可进行多用户支持等高级功能
 
 ## 5. 开发建议
 
@@ -338,6 +418,8 @@ Phase 2 (订阅源分组) ✅  ←→  Phase 3 (收藏夹) ✅
 | M2     | 订阅源分组管理       | ✅ 完成 |
 | M3     | 收藏夹功能           | ✅ 完成 |
 | M4     | 响应式布局优化       | ✅ 完成 |
+| M5     | 用户认证系统         | ✅ 完成 |
+| M6     | 多用户数据隔离       | ✅ 完成 |
 
 ---
 

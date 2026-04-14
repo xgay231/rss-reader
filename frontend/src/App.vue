@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { provideAuth, useAuth } from "./composables/useAuth";
 import { fetchWithAuth } from "./utils/api";
 import SourceList from "./components/SourceList.vue";
@@ -28,6 +28,26 @@ const isMobile = computed(() => windowWidth.value < 768);
 const updateWindowWidth = () => {
   windowWidth.value = window.innerWidth;
 };
+
+// Clear data when user changes (user switch)
+watch(() => auth.user.value, (newUser, oldUser) => {
+  if (oldUser && !newUser) {
+    // Logout - clear all data
+    articles.value = [];
+    selectedArticle.value = null;
+    currentView.value = "sources";
+  } else if (newUser && !oldUser) {
+    // Login - clear old user data
+    articles.value = [];
+    selectedArticle.value = null;
+    currentView.value = "sources";
+  } else if (newUser && oldUser && newUser.id !== oldUser.id) {
+    // User switched - clear old user's data
+    articles.value = [];
+    selectedArticle.value = null;
+    currentView.value = "sources";
+  }
+});
 
 onMounted(() => {
   window.addEventListener("resize", updateWindowWidth);
@@ -172,7 +192,7 @@ const refreshStarredCount = () => {
       :style="{ width: isMobile ? '100%' : leftWidth + 'px' }"
       v-show="!isMobile || currentView === 'sources'"
     >
-      <SourceList ref="sourceListRef" @source-selected="handleSourceSelected" />
+      <SourceList ref="sourceListRef" :key="auth.user.value?.id" @source-selected="handleSourceSelected" />
     </div>
 
     <!-- Left Divider -->

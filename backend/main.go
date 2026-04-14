@@ -98,6 +98,19 @@ type Article struct {
 	SummaryGeneratedAt *time.Time        `json:"summaryGeneratedAt" bson:"summaryGeneratedAt"`
 }
 
+// getUserID extracts and validates userID from context
+func getUserID(c *gin.Context) primitive.ObjectID {
+	userID, exists := c.Get("userID")
+	if !exists {
+		return primitive.NilObjectID
+	}
+	id, err := primitive.ObjectIDFromHex(userID.(string))
+	if err != nil {
+		return primitive.NilObjectID
+	}
+	return id
+}
+
 func updateFeeds() {
 	log.Println("Starting feed update process...")
 	var sources []FeedSource
@@ -139,6 +152,7 @@ func updateFeeds() {
 				}
 				article := Article{
 					SourceID:    source.ID,
+					UserID:      source.UserID, // Preserve the userId from source
 					GUID:        item.GUID,
 					Title:       item.Title,
 					URL:         item.Link,
@@ -215,6 +229,12 @@ func main() {
 		{
 			// Add a new feed source
 			sources.POST("", func(c *gin.Context) {
+				userID := getUserID(c)
+				if userID == primitive.NilObjectID {
+					c.JSON(401, gin.H{"error": "Unauthorized"})
+					return
+				}
+
 				var json struct {
 					URL string `json:"url" binding:"required"`
 				}
@@ -224,9 +244,9 @@ func main() {
 					return
 				}
 
-				// Check if feed already exists
+				// Check if feed already exists for this user
 				var existingSource FeedSource
-				err := db.SourceCollection.FindOne(context.Background(), bson.M{"url": json.URL}).Decode(&existingSource)
+				err := db.SourceCollection.FindOne(context.Background(), bson.M{"url": json.URL, "userId": userID}).Decode(&existingSource)
 				if err == nil {
 					c.JSON(409, gin.H{"error": "Feed source already exists"})
 					return
@@ -240,8 +260,9 @@ func main() {
 				}
 
 				newSource := FeedSource{
-					Name: feed.Title,
-					URL:  json.URL,
+					UserID: userID,
+					Name:   feed.Title,
+					URL:    json.URL,
 				}
 
 				res, err := db.SourceCollection.InsertOne(context.Background(), newSource)
@@ -254,7 +275,7 @@ func main() {
 				// Fix duplicate starred articles issue - move orphaned starred articles to new source BEFORE checking for duplicates
 				for _, item := range feed.Items {
 					var existingStarred Article
-					findFilter := bson.M{"guid": item.GUID, "isStarred": true}
+					findFilter := bson.M{"guid": item.GUID, "isStarred": true, "userId": userID}
 					err := db.ArticleCollection.FindOne(context.Background(), findFilter).Decode(&existingStarred)
 					if err == nil {
 						var source FeedSource
@@ -289,12 +310,13 @@ func main() {
 					if err == mongo.ErrNoDocuments {
 						// Article doesn't exist, insert it
 						article := Article{
-							SourceID:    sourceID,
-							GUID:        item.GUID,
-							Title:       item.Title,
-							URL:         item.Link,
+							UserID:     userID,
+							SourceID:   sourceID,
+							GUID:       item.GUID,
+							Title:      item.Title,
+							URL:        item.Link,
 							Description: item.Description,
-							Content:     content,
+							Content:    content,
 							PublishedAt: publishedAt,
 						}
 						_, insertErr := db.ArticleCollection.InsertOne(context.Background(), article)
@@ -310,8 +332,14 @@ func main() {
 
 			// Get all feed sources
 			sources.GET("", func(c *gin.Context) {
+				userID := getUserID(c)
+				if userID == primitive.NilObjectID {
+					c.JSON(401, gin.H{"error": "Unauthorized"})
+					return
+				}
+
 				var sources []FeedSource
-				cursor, err := db.SourceCollection.Find(context.Background(), bson.M{})
+				cursor, err := db.SourceCollection.Find(context.Background(), bson.M{"userId": userID})
 				if err != nil {
 					c.JSON(500, gin.H{"error": "Failed to fetch sources"})
 					return
@@ -328,21 +356,27 @@ func main() {
 
 			// Delete a feed source
 			sources.DELETE("/:id", func(c *gin.Context) {
+				userID := getUserID(c)
+				if userID == primitive.NilObjectID {
+					c.JSON(401, gin.H{"error": "Unauthorized"})
+					return
+				}
+
 				id, err := primitive.ObjectIDFromHex(c.Param("id"))
 				if err != nil {
 					c.JSON(400, gin.H{"error": "Invalid ID"})
 					return
 				}
 
-				// Delete the source
-				_, err = db.SourceCollection.DeleteOne(context.Background(), bson.M{"_id": id})
+				// Delete the source (only if belongs to user)
+				_, err = db.SourceCollection.DeleteOne(context.Background(), bson.M{"_id": id, "userId": userID})
 				if err != nil {
 					c.JSON(500, gin.H{"error": "Failed to delete source"})
 					return
 				}
 
 				// Delete associated articles (keep starred articles)
-				_, err = db.ArticleCollection.DeleteMany(context.Background(), bson.M{"sourceId": id, "isStarred": false})
+				_, err = db.ArticleCollection.DeleteMany(context.Background(), bson.M{"sourceId": id, "isStarred": false, "userId": userID})
 				if err != nil {
 					// Log this error but don't fail the request, as the source is already deleted.
 					log.Printf("Failed to delete articles for source %s: %v", id.Hex(), err)
@@ -353,6 +387,12 @@ func main() {
 
 			// Get articles for a specific source
 			sources.GET("/:id/articles", func(c *gin.Context) {
+				userID := getUserID(c)
+				if userID == primitive.NilObjectID {
+					c.JSON(401, gin.H{"error": "Unauthorized"})
+					return
+				}
+
 				id, err := primitive.ObjectIDFromHex(c.Param("id"))
 				if err != nil {
 					c.JSON(400, gin.H{"error": "Invalid Source ID"})
@@ -360,7 +400,7 @@ func main() {
 				}
 
 				var articles []Article
-				cursor, err := db.ArticleCollection.Find(context.Background(), bson.M{"sourceId": id})
+				cursor, err := db.ArticleCollection.Find(context.Background(), bson.M{"sourceId": id, "userId": userID})
 				if err != nil {
 					c.JSON(500, gin.H{"error": "Failed to fetch articles"})
 					return
@@ -377,6 +417,12 @@ func main() {
 
 			// Assign source to group
 			sources.PUT("/:id/group", func(c *gin.Context) {
+				userID := getUserID(c)
+				if userID == primitive.NilObjectID {
+					c.JSON(401, gin.H{"error": "Unauthorized"})
+					return
+				}
+
 				id, err := primitive.ObjectIDFromHex(c.Param("id"))
 				if err != nil {
 					c.JSON(400, gin.H{"error": "Invalid Source ID"})
@@ -402,7 +448,7 @@ func main() {
 				}
 
 				update := bson.M{"$set": bson.M{"groupId": groupID}}
-				_, err = db.SourceCollection.UpdateByID(context.Background(), id, update)
+				_, err = db.SourceCollection.UpdateOne(context.Background(), bson.M{"_id": id, "userId": userID}, update)
 				if err != nil {
 					c.JSON(500, gin.H{"error": "Failed to update source"})
 					return
@@ -418,6 +464,12 @@ func main() {
 		{
 			// Create a group
 			groups.POST("", func(c *gin.Context) {
+				userID := getUserID(c)
+				if userID == primitive.NilObjectID {
+					c.JSON(401, gin.H{"error": "Unauthorized"})
+					return
+				}
+
 				var json struct {
 					Name string `json:"name" binding:"required"`
 				}
@@ -428,6 +480,7 @@ func main() {
 				}
 
 				group := Group{
+					UserID:    userID,
 					Name:      json.Name,
 					CreatedAt: time.Now(),
 				}
@@ -444,8 +497,14 @@ func main() {
 
 			// Get all groups
 			groups.GET("", func(c *gin.Context) {
+				userID := getUserID(c)
+				if userID == primitive.NilObjectID {
+					c.JSON(401, gin.H{"error": "Unauthorized"})
+					return
+				}
+
 				var groups []Group
-				cursor, err := db.GroupCollection.Find(context.Background(), bson.M{})
+				cursor, err := db.GroupCollection.Find(context.Background(), bson.M{"userId": userID})
 				if err != nil {
 					c.JSON(500, gin.H{"error": "Failed to fetch groups"})
 					return
@@ -462,6 +521,12 @@ func main() {
 
 			// Update a group
 			groups.PUT("/:id", func(c *gin.Context) {
+				userID := getUserID(c)
+				if userID == primitive.NilObjectID {
+					c.JSON(401, gin.H{"error": "Unauthorized"})
+					return
+				}
+
 				id, err := primitive.ObjectIDFromHex(c.Param("id"))
 				if err != nil {
 					c.JSON(400, gin.H{"error": "Invalid Group ID"})
@@ -478,7 +543,7 @@ func main() {
 				}
 
 				update := bson.M{"$set": bson.M{"name": json.Name}}
-				_, err = db.GroupCollection.UpdateByID(context.Background(), id, update)
+				_, err = db.GroupCollection.UpdateOne(context.Background(), bson.M{"_id": id, "userId": userID}, update)
 				if err != nil {
 					c.JSON(500, gin.H{"error": "Failed to update group"})
 					return
@@ -489,21 +554,27 @@ func main() {
 
 			// Delete a group
 			groups.DELETE("/:id", func(c *gin.Context) {
+				userID := getUserID(c)
+				if userID == primitive.NilObjectID {
+					c.JSON(401, gin.H{"error": "Unauthorized"})
+					return
+				}
+
 				id, err := primitive.ObjectIDFromHex(c.Param("id"))
 				if err != nil {
 					c.JSON(400, gin.H{"error": "Invalid Group ID"})
 					return
 				}
 
-				// Delete the group
-				_, err = db.GroupCollection.DeleteOne(context.Background(), bson.M{"_id": id})
+				// Delete the group (only if belongs to user)
+				_, err = db.GroupCollection.DeleteOne(context.Background(), bson.M{"_id": id, "userId": userID})
 				if err != nil {
 					c.JSON(500, gin.H{"error": "Failed to delete group"})
 					return
 				}
 
 				// Remove groupId from sources in this group
-				_, err = db.SourceCollection.UpdateMany(context.Background(), bson.M{"groupId": id}, bson.M{"$set": bson.M{"groupId": primitive.NilObjectID}})
+				_, err = db.SourceCollection.UpdateMany(context.Background(), bson.M{"groupId": id, "userId": userID}, bson.M{"$set": bson.M{"groupId": primitive.NilObjectID}})
 				if err != nil {
 					log.Printf("Failed to update sources after group deletion: %v", err)
 				}
@@ -518,7 +589,13 @@ func main() {
 		{
 			// Get all starred articles
 			articles.GET("/starred", func(c *gin.Context) {
-				filter := bson.M{"isStarred": true}
+				userID := getUserID(c)
+				if userID == primitive.NilObjectID {
+					c.JSON(401, gin.H{"error": "Unauthorized"})
+					return
+				}
+
+				filter := bson.M{"isStarred": true, "userId": userID}
 				cursor, err := db.ArticleCollection.Find(context.Background(), filter)
 				if err != nil {
 					c.JSON(500, gin.H{"error": "Failed to fetch starred articles"})
@@ -537,6 +614,12 @@ func main() {
 
 			// Get a single article by its ID
 			articles.GET("/:id", func(c *gin.Context) {
+				userID := getUserID(c)
+				if userID == primitive.NilObjectID {
+					c.JSON(401, gin.H{"error": "Unauthorized"})
+					return
+				}
+
 				id, err := primitive.ObjectIDFromHex(c.Param("id"))
 				if err != nil {
 					c.JSON(400, gin.H{"error": "Invalid Article ID"})
@@ -544,7 +627,7 @@ func main() {
 				}
 
 				var article Article
-				err = db.ArticleCollection.FindOne(context.Background(), bson.M{"_id": id}).Decode(&article)
+				err = db.ArticleCollection.FindOne(context.Background(), bson.M{"_id": id, "userId": userID}).Decode(&article)
 				if err != nil {
 					c.JSON(404, gin.H{"error": "Article not found"})
 					return
@@ -555,6 +638,12 @@ func main() {
 
 			// Generate AI summary for an article
 			articles.POST("/:id/ai-summary", func(c *gin.Context) {
+				userID := getUserID(c)
+				if userID == primitive.NilObjectID {
+					c.JSON(401, gin.H{"error": "Unauthorized"})
+					return
+				}
+
 				if aiClient == nil {
 					c.JSON(503, gin.H{"error": "AI service is not available"})
 					return
@@ -567,7 +656,7 @@ func main() {
 				}
 
 				var article Article
-				err = db.ArticleCollection.FindOne(context.Background(), bson.M{"_id": id}).Decode(&article)
+				err = db.ArticleCollection.FindOne(context.Background(), bson.M{"_id": id, "userId": userID}).Decode(&article)
 				if err != nil {
 					c.JSON(404, gin.H{"error": "Article not found"})
 					return
@@ -618,6 +707,12 @@ func main() {
 
 			// Star an article
 			articles.POST("/:id/star", func(c *gin.Context) {
+				userID := getUserID(c)
+				if userID == primitive.NilObjectID {
+					c.JSON(401, gin.H{"error": "Unauthorized"})
+					return
+				}
+
 				id, err := primitive.ObjectIDFromHex(c.Param("id"))
 				if err != nil {
 					c.JSON(400, gin.H{"error": "Invalid Article ID"})
@@ -625,9 +720,14 @@ func main() {
 				}
 
 				update := bson.M{"$set": bson.M{"isStarred": true, "starredAt": time.Now()}}
-				_, err = db.ArticleCollection.UpdateByID(context.Background(), id, update)
+				result, err := db.ArticleCollection.UpdateOne(context.Background(), bson.M{"_id": id, "userId": userID}, update)
 				if err != nil {
 					c.JSON(500, gin.H{"error": "Failed to star article"})
+					return
+				}
+
+				if result.MatchedCount == 0 {
+					c.JSON(404, gin.H{"error": "Article not found"})
 					return
 				}
 
@@ -636,6 +736,12 @@ func main() {
 
 			// Unstar an article
 			articles.DELETE("/:id/star", func(c *gin.Context) {
+				userID := getUserID(c)
+				if userID == primitive.NilObjectID {
+					c.JSON(401, gin.H{"error": "Unauthorized"})
+					return
+				}
+
 				id, err := primitive.ObjectIDFromHex(c.Param("id"))
 				if err != nil {
 					c.JSON(400, gin.H{"error": "Invalid Article ID"})
@@ -643,9 +749,14 @@ func main() {
 				}
 
 				update := bson.M{"$set": bson.M{"isStarred": false}}
-				_, err = db.ArticleCollection.UpdateByID(context.Background(), id, update)
+				result, err := db.ArticleCollection.UpdateOne(context.Background(), bson.M{"_id": id, "userId": userID}, update)
 				if err != nil {
 					c.JSON(500, gin.H{"error": "Failed to unstar article"})
+					return
+				}
+
+				if result.MatchedCount == 0 {
+					c.JSON(404, gin.H{"error": "Article not found"})
 					return
 				}
 

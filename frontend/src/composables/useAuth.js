@@ -50,12 +50,17 @@ export function provideAuth() {
   }
 
   const logout = async () => {
-    if (accessToken.value) {
+    // Save token before clearing
+    const token = accessToken.value
+    user.value = null
+    setTokens(null, null)
+    // Don't await the logout API call, just clear state and reload
+    if (token) {
       try {
-        await fetch('/api/auth/logout', {
+        fetch('/api/auth/logout', {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${accessToken.value}`,
+            'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           }
         })
@@ -63,8 +68,8 @@ export function provideAuth() {
         // Ignore logout errors
       }
     }
-    user.value = null
-    setTokens(null, null)
+    // Force reload to clear all pending state
+    window.location.reload()
   }
 
   const refreshAccessToken = async () => {
