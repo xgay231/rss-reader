@@ -96,6 +96,7 @@ type Article struct {
 	StarredAt          time.Time         `json:"starredAt" bson:"starredAt"`
 	Summary            string             `json:"summary" bson:"summary"`
 	SummaryGeneratedAt *time.Time        `json:"summaryGeneratedAt" bson:"summaryGeneratedAt"`
+	ReadStatus         string             `json:"readStatus" bson:"readStatus"` // "unread" | "read"
 }
 
 // getUserID extracts and validates userID from context
