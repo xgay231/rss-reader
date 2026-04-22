@@ -162,13 +162,21 @@ const handleArticleSelected = async (article) => {
   }
   currentView.value = "content";
 
-  // Mark article as read when clicked (fire and forget)
+  // Mark article as read when clicked and update local state
   if (article.readStatus !== 'read') {
     fetchWithAuth(`/api/articles/${article.id}/read`, {
       method: 'PUT'
-    }).catch(error => {
-      console.error('Failed to mark article as read:', error);
-    });
+    })
+      .then(() => {
+        // Update local articles state to reflect the change
+        const index = articles.value.findIndex(a => a.id === article.id);
+        if (index !== -1) {
+          articles.value[index] = { ...articles.value[index], readStatus: 'read' };
+        }
+      })
+      .catch(error => {
+        console.error('Failed to mark article as read:', error);
+      });
   }
 };
 
