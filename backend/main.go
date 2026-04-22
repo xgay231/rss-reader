@@ -418,6 +418,39 @@ func main() {
 				c.JSON(200, articles)
 			})
 
+			// Mark all articles in a source as read
+			sources.PUT("/:id/mark-all-read", func(c *gin.Context) {
+				userID := getUserID(c)
+				if userID == primitive.NilObjectID {
+					c.JSON(401, gin.H{"error": "Unauthorized"})
+					return
+				}
+
+				id, err := primitive.ObjectIDFromHex(c.Param("id"))
+				if err != nil {
+					c.JSON(400, gin.H{"error": "Invalid Source ID"})
+					return
+				}
+
+				// Check if source exists and belongs to user
+				var source FeedSource
+				err = db.SourceCollection.FindOne(context.Background(), bson.M{"_id": id, "userId": userID}).Decode(&source)
+				if err != nil {
+					c.JSON(404, gin.H{"error": "Source not found"})
+					return
+				}
+
+				update := bson.M{"$set": bson.M{"readStatus": "read"}}
+				filter := bson.M{"sourceId": id, "userId": userID, "readStatus": "unread"}
+				result, err := db.ArticleCollection.UpdateMany(context.Background(), filter, update)
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to mark articles as read"})
+					return
+				}
+
+				c.JSON(200, gin.H{"modifiedCount": result.ModifiedCount})
+			})
+
 			// Assign source to group
 			sources.PUT("/:id/group", func(c *gin.Context) {
 				userID := getUserID(c)
