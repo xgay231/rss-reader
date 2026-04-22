@@ -1,5 +1,5 @@
 <script setup>
-import { defineProps } from 'vue';
+import { ref, computed, defineProps } from 'vue';
 
 // This component will receive the list of articles as a prop
 const props = defineProps({
@@ -7,13 +7,57 @@ const props = defineProps({
     type: Array,
     required: true,
   },
+  currentSourceId: {
+    type: String,
+    default: null,
+  },
 });
 
 // This component will emit an event when an article is selected
-const emit = defineEmits(['article-selected']);
+const emit = defineEmits(['article-selected', 'mark-all-read']);
 
 const selectArticle = (article) => {
   emit('article-selected', article);
+};
+
+// Filter state
+const showRead = ref(true);
+const showUnread = ref(true);
+
+const toggleShowRead = () => {
+  showRead.value = !showRead.value;
+  // Ensure at least one is true
+  if (!showRead.value && !showUnread.value) {
+    showUnread.value = true;
+  }
+  refreshArticles();
+};
+
+const toggleShowUnread = () => {
+  showUnread.value = !showUnread.value;
+  if (!showRead.value && !showUnread.value) {
+    showRead.value = true;
+  }
+  refreshArticles();
+};
+
+const markAllAsRead = async () => {
+  // Emit event to parent component to mark all articles as read
+  emit('mark-all-read', props.currentSourceId);
+};
+
+// Filtered articles based on filter state
+const filteredArticles = computed(() => {
+  return props.articles.filter((article) => {
+    if (article.readStatus === 'read' && !showRead.value) return false;
+    if (article.readStatus === 'unread' && !showUnread.value) return false;
+    return true;
+  });
+});
+
+const refreshArticles = () => {
+  // Trigger reactivity by emitting a refresh event or relying on computed
+  // The computed property will automatically update
 };
 
 const formatTime = (timeString) => {
@@ -40,11 +84,35 @@ const formatTime = (timeString) => {
 <template>
   <div class="article-list-container">
     <h2>Articles</h2>
-    <ul v-if="articles.length > 0">
+    <div class="filter-bar">
+      <button
+        class="filter-btn"
+        :class="{ active: showRead }"
+        @click="toggleShowRead"
+      >
+        显示已读
+      </button>
+      <button
+        class="filter-btn"
+        :class="{ active: showUnread }"
+        @click="toggleShowUnread"
+      >
+        显示未读
+      </button>
+      <button
+        class="mark-read-btn"
+        @click="markAllAsRead"
+        :disabled="!showUnread"
+      >
+        标记已读
+      </button>
+    </div>
+    <ul v-if="filteredArticles.length > 0">
       <li
-        v-for="article in articles"
+        v-for="article in filteredArticles"
         :key="article.id"
         @click="selectArticle(article)"
+        :class="{ read: article.readStatus === 'read' }"
       >
         <h3>{{ article.title }}</h3>
         <div class="article-meta">
@@ -93,6 +161,11 @@ li:hover {
   background-color: var(--color-bg-item-hover);
 }
 
+li.read {
+  opacity: 0.6;
+  background-color: var(--color-bg-read, #f5f5f5);
+}
+
 h3 {
   margin: 0 0 0.25rem 0;
   font-size: 1rem;
@@ -125,5 +198,41 @@ p {
   align-items: center;
   height: 80%;
   color: var(--color-text-secondary);
+}
+
+.filter-bar {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.filter-btn {
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--color-border);
+  background: white;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.filter-btn.active {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+}
+
+.mark-read-btn {
+  margin-left: auto;
+  padding: 0.25rem 0.75rem;
+  background: var(--color-accent);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.mark-read-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
 }
 </style>
