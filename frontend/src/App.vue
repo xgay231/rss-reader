@@ -161,6 +161,15 @@ const handleArticleSelected = async (article) => {
     selectedArticle.value = article;
   }
   currentView.value = "content";
+
+  // Mark article as read when clicked (fire and forget)
+  if (article.readStatus !== 'read') {
+    fetchWithAuth(`/api/articles/${article.id}/read`, {
+      method: 'PUT'
+    }).catch(error => {
+      console.error('Failed to mark article as read:', error);
+    });
+  }
 };
 
 // Update article when summary is generated
