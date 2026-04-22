@@ -26,19 +26,10 @@ const showUnread = ref(true);
 
 const toggleShowRead = () => {
   showRead.value = !showRead.value;
-  // Ensure at least one is true
-  if (!showRead.value && !showUnread.value) {
-    showUnread.value = true;
-  }
-  refreshArticles();
 };
 
 const toggleShowUnread = () => {
   showUnread.value = !showUnread.value;
-  if (!showRead.value && !showUnread.value) {
-    showRead.value = true;
-  }
-  refreshArticles();
 };
 
 const markAllAsRead = async () => {
@@ -54,11 +45,6 @@ const filteredArticles = computed(() => {
     return true;
   });
 });
-
-const refreshArticles = () => {
-  // Trigger reactivity by emitting a refresh event or relying on computed
-  // The computed property will automatically update
-};
 
 const formatTime = (timeString) => {
   if (!timeString) return '';
@@ -122,7 +108,8 @@ const formatTime = (timeString) => {
       </li>
     </ul>
     <div v-else class="no-articles">
-      <p>Select a feed to see its articles.</p>
+      <p v-if="!showRead && !showUnread">无符合筛选条件的文章</p>
+      <p v-else>Select a feed to see its articles.</p>
     </div>
   </div>
 </template>
