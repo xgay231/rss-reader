@@ -160,6 +160,7 @@ func updateFeeds() {
 					Description: item.Description,
 					Content:     content,
 					PublishedAt: publishedAt,
+					ReadStatus:  "unread",
 				}
 				newArticles = append(newArticles, article)
 			} else if err != nil {
@@ -311,14 +312,15 @@ func main() {
 					if err == mongo.ErrNoDocuments {
 						// Article doesn't exist, insert it
 						article := Article{
-							UserID:     userID,
-							SourceID:   sourceID,
-							GUID:       item.GUID,
-							Title:      item.Title,
-							URL:        item.Link,
+							UserID:      userID,
+							SourceID:    sourceID,
+							GUID:        item.GUID,
+							Title:       item.Title,
+							URL:         item.Link,
 							Description: item.Description,
-							Content:    content,
+							Content:     content,
 							PublishedAt: publishedAt,
+							ReadStatus:  "unread",
 						}
 						_, insertErr := db.ArticleCollection.InsertOne(context.Background(), article)
 						if insertErr != nil {
