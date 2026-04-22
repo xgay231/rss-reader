@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -46,5 +47,15 @@ func ConnectDatabase() {
 		log.Printf("Warning: failed to create email index: %v", err)
 	} else {
 		log.Println("User email index created successfully")
+	}
+
+	// Create index on readStatus for ArticleCollection
+	_, err = ArticleCollection.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{{Key: "readStatus", Value: 1}},
+	})
+	if err != nil {
+		log.Printf("Warning: failed to create readStatus index: %v", err)
+	} else {
+		log.Println("Article readStatus index created successfully")
 	}
 }
