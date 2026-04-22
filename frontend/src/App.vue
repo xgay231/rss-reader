@@ -168,6 +168,25 @@ const handleSummaryUpdated = (updatedArticle) => {
   selectedArticle.value = updatedArticle;
 };
 
+// Mark all articles as read for the current source
+const handleMarkAllRead = async () => {
+  if (!currentSourceId.value || currentSourceId.value === "starred") return;
+
+  try {
+    const response = await fetchWithAuth(
+      `/api/sources/${currentSourceId.value}/mark-all-read`,
+      { method: "PUT" }
+    );
+    if (response.ok) {
+      // 刷新文章列表
+      const source = { id: currentSourceId.value };
+      handleSourceSelected(source);
+    }
+  } catch (error) {
+    console.error("Error marking all as read:", error);
+  }
+};
+
 // Refresh starred count and list when article is starred/unstarred
 const refreshStarredCount = async () => {
   if (sourceListRef.value) {
@@ -232,7 +251,9 @@ const refreshStarredCount = async () => {
     >
       <ArticleList
         :articles="articles"
+        :currentSourceId="currentSourceId"
         @article-selected="handleArticleSelected"
+        @mark-all-read="handleMarkAllRead"
       />
     </div>
 
