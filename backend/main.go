@@ -615,6 +615,50 @@ func main() {
 				c.JSON(200, articles)
 			})
 
+			// Get articles with optional filtering
+			articles.GET("", func(c *gin.Context) {
+				userID := getUserID(c)
+				if userID == primitive.NilObjectID {
+					c.JSON(401, gin.H{"error": "Unauthorized"})
+					return
+				}
+
+				showRead := c.Query("showRead") == "true"
+				showUnread := c.Query("showUnread") == "true"
+
+				// Build filter condition
+				filter := bson.M{"userId": userID}
+
+				// If both are false, return empty array (user explicitly chose blank state)
+				if !showRead && !showUnread {
+					c.JSON(200, []Article{})
+					return
+				}
+
+				// Add readStatus filter
+				if showRead && !showUnread {
+					filter["readStatus"] = "read"
+				} else if !showRead && showUnread {
+					filter["readStatus"] = "unread"
+				}
+				// If both are true, don't add readStatus filter
+
+				cursor, err := db.ArticleCollection.Find(context.Background(), filter)
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to fetch articles"})
+					return
+				}
+				defer cursor.Close(context.Background())
+
+				var articles []Article
+				if err = cursor.All(context.Background(), &articles); err != nil {
+					c.JSON(500, gin.H{"error": "Failed to decode articles"})
+					return
+				}
+
+				c.JSON(200, articles)
+			})
+
 			// Get a single article by its ID
 			articles.GET("/:id", func(c *gin.Context) {
 				userID := getUserID(c)
