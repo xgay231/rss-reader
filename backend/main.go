@@ -32,6 +32,63 @@ func removeThinkTags(text string) string {
 	return strings.TrimSpace(re.ReplaceAllString(text, ""))
 }
 
+// generateSummary generates an AI summary for an article and saves it to the database
+func generateSummary(url string, articleID primitive.ObjectID, userID primitive.ObjectID) {
+	if aiClient == nil {
+		log.Printf("AI client not available, skipping summary generation for article %s", articleID.Hex())
+		return
+	}
+
+	ctx := context.Background()
+	var article Article
+	err := db.ArticleCollection.FindOne(ctx, bson.M{"_id": articleID, "userId": userID}).Decode(&article)
+	if err != nil {
+		log.Printf("Failed to find article %s for summary generation: %v", articleID.Hex(), err)
+		return
+	}
+
+	// Create a chat completion request
+	resp, err := aiClient.CreateChatCompletion(
+		ctx,
+		openai.ChatCompletionRequest{
+			Model: aiModelName,
+			Messages: []openai.ChatCompletionMessage{
+				{
+					Role:    openai.ChatMessageRoleSystem,
+					Content: "你是一个帮助用户总结文章内容的助手。请用中文输出纯文本摘要，不要使用 markdown 格式，不要使用列表、标题、粗体等任何格式标记，只输出纯段落文本。",
+				},
+				{
+					Role:    openai.ChatMessageRoleUser,
+					Content: "Please summarize the following article content:\n\n" + article.Content,
+				},
+			},
+		},
+	)
+
+	if err != nil {
+		log.Printf("ChatCompletion error for article %s: %v", articleID.Hex(), err)
+		return
+	}
+
+	if len(resp.Choices) == 0 {
+		log.Printf("No summary content returned from AI for article %s", articleID.Hex())
+		return
+	}
+
+	summary := removeThinkTags(resp.Choices[0].Message.Content)
+
+	// Save summary to database
+	now := time.Now()
+	update := bson.M{"$set": bson.M{"summary": summary, "summaryGeneratedAt": now}}
+	_, err = db.ArticleCollection.UpdateByID(ctx, articleID, update)
+	if err != nil {
+		log.Printf("Failed to save AI summary for article %s: %v", articleID.Hex(), err)
+		return
+	}
+
+	log.Printf("Successfully generated summary for article %s", articleID.Hex())
+}
+
 func init() {
 	// Load .env file
 	err := godotenv.Load()
@@ -261,11 +318,34 @@ func updateFeeds() {
 
 		if len(newArticles) > 0 {
 			opts := options.InsertMany().SetOrdered(false)
-			_, err := db.ArticleCollection.InsertMany(ctx, newArticles, opts)
+			result, err := db.ArticleCollection.InsertMany(ctx, newArticles, opts)
 			if err != nil {
 				log.Printf("Failed to insert %d new articles for source %s: %v", len(newArticles), source.Name, err)
 			} else {
 				log.Printf("Inserted %d new articles for source %s", len(newArticles), source.Name)
+
+				// Auto-generate summaries for new articles if user has autoSummary enabled
+				go func(source FeedSource, insertedIDs []interface{}) {
+					// Check if user has autoSummary enabled
+					var user struct {
+						AutoSummary bool `bson:"autoSummary"`
+					}
+					err := db.UserCollection.FindOne(context.Background(), bson.M{"_id": source.UserID}).Decode(&user)
+					if err != nil {
+						log.Printf("Failed to check autoSummary setting for user %s: %v", source.UserID.Hex(), err)
+						return
+					}
+
+					if !user.AutoSummary {
+						return
+					}
+
+					// Generate summary for each new article
+					for _, id := range insertedIDs {
+						articleID := id.(primitive.ObjectID)
+						go generateSummary("", articleID, source.UserID)
+					}
+				}(source, result.InsertedIDs)
 			}
 		}
 	}
