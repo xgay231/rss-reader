@@ -183,6 +183,21 @@ const handleArticleSelected = async (article) => {
 // Update article when summary is generated
 const handleSummaryUpdated = (updatedArticle) => {
   selectedArticle.value = updatedArticle;
+  // Also update the article in the articles list
+  const index = articles.value.findIndex(a => a.id === updatedArticle.id);
+  if (index !== -1) {
+    articles.value[index] = updatedArticle;
+  }
+};
+
+// Handle read status change from ArticleView
+const handleReadStatusChanged = () => {
+  // Refresh the article list to show updated read status
+  if (currentSourceId.value && currentSourceId.value !== "starred") {
+    handleSourceSelected({ id: currentSourceId.value });
+  } else if (currentSourceId.value === "starred") {
+    loadStarredArticles();
+  }
 };
 
 // Mark all articles as read for the current source
@@ -288,6 +303,7 @@ const refreshStarredCount = async () => {
         :article="selectedArticle"
         @starred-changed="refreshStarredCount"
         @summary-updated="handleSummaryUpdated"
+        @read-status-changed="handleReadStatusChanged"
       />
     </div>
     </template>
