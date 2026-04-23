@@ -874,6 +874,38 @@ func main() {
 				article.ReadStatus = "read"
 				c.JSON(200, article)
 			})
+
+			// Mark article as unread
+			articles.DELETE("/:id/read", func(c *gin.Context) {
+				userID := getUserID(c)
+				if userID == primitive.NilObjectID {
+					c.JSON(401, gin.H{"error": "Unauthorized"})
+					return
+				}
+
+				id, err := primitive.ObjectIDFromHex(c.Param("id"))
+				if err != nil {
+					c.JSON(400, gin.H{"error": "Invalid Article ID"})
+					return
+				}
+
+				var article Article
+				err = db.ArticleCollection.FindOne(context.Background(), bson.M{"_id": id, "userId": userID}).Decode(&article)
+				if err != nil {
+					c.JSON(404, gin.H{"error": "Article not found"})
+					return
+				}
+
+				update := bson.M{"$set": bson.M{"readStatus": "unread"}}
+				_, err = db.ArticleCollection.UpdateOne(context.Background(), bson.M{"_id": id, "userId": userID}, update)
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to update article"})
+					return
+				}
+
+				article.ReadStatus = "unread"
+				c.JSON(200, article)
+			})
 		}
 	}
 
