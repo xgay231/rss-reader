@@ -343,16 +343,15 @@ func updateFeeds() {
 						return
 					}
 
-					if !user.AutoSummary {
-						return
-					}
-
 					// Semaphore to limit concurrent goroutines to 5
 					semaphore := make(chan struct{}, 5)
 					var wg sync.WaitGroup
 
 					// Generate summary for each new article
 					for _, id := range insertedIDs {
+						if !user.AutoSummary {
+							continue // Skip this article, don't spawn goroutine
+						}
 						articleID := id.(primitive.ObjectID)
 						wg.Add(1)
 						semaphore <- struct{}{} // Acquire semaphore
