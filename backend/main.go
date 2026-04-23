@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
 	"os"
 	"regexp"
 	"strings"
@@ -99,6 +100,12 @@ type Article struct {
 	ReadStatus         string             `json:"readStatus" bson:"readStatus"` // "unread" | "read"
 }
 
+// Settings represents user settings
+type Settings struct {
+	FeedUpdateInterval int  `json:"feedUpdateInterval"`
+	AutoSummary       bool `json:"autoSummary"`
+}
+
 // getUserID extracts and validates userID from context
 func getUserID(c *gin.Context) primitive.ObjectID {
 	userID, exists := c.Get("userID")
@@ -110,6 +117,89 @@ func getUserID(c *gin.Context) primitive.ObjectID {
 		return primitive.NilObjectID
 	}
 	return id
+}
+
+// GetSettings returns the user's settings
+func GetSettings(c *gin.Context) {
+	userID := getUserID(c)
+	if userID == primitive.NilObjectID {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	var user struct {
+		FeedUpdateInterval int  `bson:"feedUpdateInterval"`
+		AutoSummary        bool `bson:"autoSummary"`
+	}
+
+	err := db.UserCollection.FindOne(context.Background(), bson.M{"_id": userID}).Decode(&user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get settings"})
+		return
+	}
+
+	// Return defaults if not set
+	feedInterval := user.FeedUpdateInterval
+	if feedInterval == 0 {
+		feedInterval = 15
+	}
+
+	c.JSON(http.StatusOK, Settings{
+		FeedUpdateInterval: feedInterval,
+		AutoSummary:        user.AutoSummary,
+	})
+}
+
+// UpdateSettings updates the user's settings
+func UpdateSettings(c *gin.Context) {
+	userID := getUserID(c)
+	if userID == primitive.NilObjectID {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	var json struct {
+		FeedUpdateInterval *int  `json:"feedUpdateInterval"`
+		AutoSummary        *bool `json:"autoSummary"`
+	}
+
+	if err := c.ShouldBindJSON(&json); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate feedUpdateInterval
+	if json.FeedUpdateInterval != nil {
+		if *json.FeedUpdateInterval < 1 || *json.FeedUpdateInterval > 1440 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "feedUpdateInterval must be between 1 and 1440"})
+			return
+		}
+	}
+
+	update := bson.M{}
+	if json.FeedUpdateInterval != nil {
+		update["feedUpdateInterval"] = *json.FeedUpdateInterval
+	}
+	if json.AutoSummary != nil {
+		update["autoSummary"] = *json.AutoSummary
+	}
+
+	if len(update) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No settings to update"})
+		return
+	}
+
+	_, err := db.UserCollection.UpdateOne(
+		context.Background(),
+		bson.M{"_id": userID},
+		bson.M{"$set": update},
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update settings"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Settings updated"})
 }
 
 func updateFeeds() {
@@ -223,6 +313,14 @@ func main() {
 		protected.Use(middleware.AuthMiddleware())
 		{
 			protected.GET("/auth/me", handlers.GetMe)
+		}
+
+		// Settings routes (protected)
+		settings := api.Group("/settings")
+		settings.Use(middleware.AuthMiddleware())
+		{
+			settings.GET("", GetSettings)
+			settings.PUT("", UpdateSettings)
 		}
 
 		// Source routes (protected)
