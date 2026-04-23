@@ -14,9 +14,32 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(['starred-changed', 'summary-updated']);
+const emit = defineEmits(['starred-changed', 'summary-updated', 'read-status-changed']);
 
 const aiSummary = ref("");
+const isTogglingReadStatus = ref(false);
+
+const toggleReadStatus = async () => {
+  if (!props.article || !props.article.id) return;
+
+  isTogglingReadStatus.value = true;
+
+  try {
+    const method = props.article.readStatus === 'unread' ? 'PUT' : 'DELETE';
+    const response = await fetchWithAuth(`/api/articles/${props.article.id}/read`, {
+      method,
+    });
+
+    if (response.ok) {
+      props.article.readStatus = props.article.readStatus === 'unread' ? 'read' : 'unread';
+      emit('read-status-changed');
+    }
+  } catch (error) {
+    console.error('Failed to toggle read status:', error);
+  } finally {
+    isTogglingReadStatus.value = false;
+  }
+};
 const isLoadingAISummary = ref(false);
 const aiSummaryError = ref("");
 
@@ -146,6 +169,13 @@ const toggleStar = async () => {
           {{ isLoadingAISummary ? "生成中..." : (article.summary ? "重新生成" : "AI 总结") }}
         </button>
         <button
+          class="read-status-btn"
+          @click="toggleReadStatus"
+          :disabled="isTogglingReadStatus"
+        >
+          {{ article.readStatus === 'unread' ? '标记已读' : '标记未读' }}
+        </button>
+        <button
           class="star-btn"
           :class="{ starred: article.isStarred }"
           @click="toggleStar"
@@ -258,6 +288,25 @@ h1 a:hover {
 }
 
 .ai-summary-btn:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.read-status-btn {
+  background-color: var(--color-accent);
+  color: var(--color-accent-text);
+  border: none;
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.read-status-btn:hover {
+  background-color: var(--color-accent-hover);
+}
+
+.read-status-btn:disabled {
   background-color: #ccc;
   cursor: not-allowed;
 }
