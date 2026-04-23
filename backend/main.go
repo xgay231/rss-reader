@@ -7,6 +7,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"rss-reader/backend/db"
@@ -33,7 +34,7 @@ func removeThinkTags(text string) string {
 }
 
 // generateSummary generates an AI summary for an article and saves it to the database
-func generateSummary(url string, articleID primitive.ObjectID, userID primitive.ObjectID) {
+func generateSummary(articleID primitive.ObjectID, userID primitive.ObjectID) {
 	if aiClient == nil {
 		log.Printf("AI client not available, skipping summary generation for article %s", articleID.Hex())
 		return
@@ -44,6 +45,12 @@ func generateSummary(url string, articleID primitive.ObjectID, userID primitive.
 	err := db.ArticleCollection.FindOne(ctx, bson.M{"_id": articleID, "userId": userID}).Decode(&article)
 	if err != nil {
 		log.Printf("Failed to find article %s for summary generation: %v", articleID.Hex(), err)
+		return
+	}
+
+	// Idempotency check: skip if summary already exists
+	if article.Summary != "" {
+		log.Printf("Summary already exists for article %s, skipping", articleID.Hex())
 		return
 	}
 
@@ -340,11 +347,22 @@ func updateFeeds() {
 						return
 					}
 
+					// Semaphore to limit concurrent goroutines to 5
+					semaphore := make(chan struct{}, 5)
+					var wg sync.WaitGroup
+
 					// Generate summary for each new article
 					for _, id := range insertedIDs {
 						articleID := id.(primitive.ObjectID)
-						go generateSummary("", articleID, source.UserID)
+						wg.Add(1)
+						semaphore <- struct{}{} // Acquire semaphore
+						go func(aid primitive.ObjectID) {
+							defer wg.Done()
+							defer func() { <-semaphore }() // Release semaphore
+							generateSummary(aid, source.UserID)
+						}(articleID)
 					}
+					wg.Wait()
 				}(source, result.InsertedIDs)
 			}
 		}
