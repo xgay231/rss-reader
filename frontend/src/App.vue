@@ -6,12 +6,14 @@ import SourceList from "./components/SourceList.vue";
 import ArticleList from "./components/ArticleList.vue";
 import ArticleView from "./components/ArticleView.vue";
 import AuthForm from "./components/AuthForm.vue";
+import SettingsModal from "./components/SettingsModal.vue";
 
 const auth = provideAuth()
 
 const articles = ref([]);
 const selectedArticle = ref(null);
 const sourceListRef = ref(null);
+const showSettings = ref(false);
 const currentSourceId = ref(null); // Track current source ID to detect starred view
 
 // Mobile navigation state - stack based navigation
@@ -251,6 +253,7 @@ const refreshStarredCount = async () => {
 
     <!-- Main App when logged in -->
     <template v-else>
+    <SettingsModal :show="showSettings" @close="showSettings = false" />
     <header class="mobile-header" v-if="isMobile && currentView !== 'sources'">
       <button class="back-btn" @click="goBack">返回</button>
       <span class="header-title">
@@ -264,7 +267,7 @@ const refreshStarredCount = async () => {
       :style="{ width: isMobile ? '100%' : leftWidth + 'px' }"
       v-show="!isMobile || currentView === 'sources'"
     >
-      <SourceList ref="sourceListRef" :key="auth.user.value?.id" @source-selected="handleSourceSelected" />
+      <SourceList ref="sourceListRef" :key="auth.user.value?.id" @source-selected="handleSourceSelected" @open-settings="showSettings = true" />
     </div>
 
     <!-- Left Divider -->
