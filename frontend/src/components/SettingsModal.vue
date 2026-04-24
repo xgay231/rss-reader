@@ -76,6 +76,9 @@ const handleSave = async () => {
   try {
     const response = await fetchWithAuth("/api/settings", {
       method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         feedUpdateInterval,
         autoSummary: autoSummary.value,
