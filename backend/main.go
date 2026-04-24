@@ -208,15 +208,31 @@ func GetSettings(c *gin.Context) {
 		return
 	}
 
-	// Return defaults if not set
+	// Return defaults if not set and persist to DB
 	feedInterval := user.FeedUpdateInterval
+	autoSummary := user.AutoSummary
+	needsUpdate := false
+
 	if feedInterval == 0 {
 		feedInterval = 15
+		needsUpdate = true
 	}
 
-	autoSummary := user.AutoSummary
 	if !autoSummary {
 		autoSummary = true
+		needsUpdate = true
+	}
+
+	if needsUpdate {
+		// Persist defaults to database so updateFeeds reads correct values
+		db.UserCollection.UpdateOne(
+			context.Background(),
+			bson.M{"_id": userID},
+			bson.M{"$set": bson.M{
+				"feedUpdateInterval": feedInterval,
+				"autoSummary":        autoSummary,
+			}},
+		)
 	}
 
 	c.JSON(http.StatusOK, Settings{
