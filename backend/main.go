@@ -26,6 +26,12 @@ import (
 
 var aiClient *openai.Client
 var aiModelName string
+var feedUpdateInterval = 15 * time.Minute // default 15 minutes
+var feedUpdateIntervalMins = 15           // interval in minutes for dynamic updates
+
+// updateTicker controls the feed update ticker
+var updateTicker *time.Ticker
+var tickerStopChan chan struct{}
 
 // removeThinkTags removes <think>...</think> tags from AI-generated content
 func removeThinkTags(text string) string {
@@ -268,7 +274,21 @@ func UpdateSettings(c *gin.Context) {
 		return
 	}
 
+	// If feedUpdateInterval was changed, signal ticker to restart with new interval
+	if json.FeedUpdateInterval != nil && *json.FeedUpdateInterval != feedUpdateIntervalMins {
+		feedUpdateIntervalMins = *json.FeedUpdateInterval
+		feedUpdateInterval = time.Duration(feedUpdateIntervalMins) * time.Minute
+		signalTickerRestart()
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "Settings updated"})
+}
+
+// signalTickerRestart signals the background ticker to restart with new interval
+func signalTickerRestart() {
+	if tickerStopChan != nil {
+		close(tickerStopChan)
+	}
 }
 
 func updateFeeds() {
@@ -348,15 +368,17 @@ func updateFeeds() {
 						return
 					}
 
+					// If autoSummary is disabled, skip all articles
+					if !user.AutoSummary {
+						return
+					}
+
 					// Semaphore to limit concurrent goroutines to 5
 					semaphore := make(chan struct{}, 5)
 					var wg sync.WaitGroup
 
 					// Generate summary for each new article
 					for _, id := range insertedIDs {
-						if !user.AutoSummary {
-							continue // Skip this article, don't spawn goroutine
-						}
 						articleID := id.(primitive.ObjectID)
 						wg.Add(1)
 						semaphore <- struct{}{} // Acquire semaphore
@@ -380,20 +402,31 @@ func RefreshFeeds(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Feed refresh triggered"})
 }
 
+// startFeedWorker starts the background feed update worker with dynamic interval support
+func startFeedWorker() {
+	// Run once on startup
+	updateFeeds()
+
+	for {
+		tickerStopChan = make(chan struct{})
+		ticker := time.NewTicker(feedUpdateInterval)
+		defer ticker.Stop()
+
+		select {
+		case <-ticker.C:
+			updateFeeds()
+		case <-tickerStopChan:
+			// Interval changed, restart ticker with new interval
+			log.Printf("Feed update interval changed to %d minutes", feedUpdateIntervalMins)
+		}
+	}
+}
+
 func main() {
 	db.ConnectDatabase() // Connect to the database
 
-	// Start the background worker
-	go func() {
-		// Run once on startup
-		updateFeeds()
-
-		ticker := time.NewTicker(1 * time.Minute)
-		defer ticker.Stop()
-		for range ticker.C {
-			updateFeeds()
-		}
-	}()
+	// Start the background worker with dynamic interval
+	go startFeedWorker()
 
 	router := gin.Default()
 
