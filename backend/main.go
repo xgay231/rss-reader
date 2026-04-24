@@ -369,6 +369,12 @@ func updateFeeds() {
 	log.Println("Feed update process finished.")
 }
 
+// RefreshFeeds triggers a manual feed update asynchronously
+func RefreshFeeds(c *gin.Context) {
+	go updateFeeds()
+	c.JSON(http.StatusOK, gin.H{"message": "Feed refresh triggered"})
+}
+
 func main() {
 	db.ConnectDatabase() // Connect to the database
 
@@ -687,6 +693,9 @@ func main() {
 
 				c.JSON(200, gin.H{"status": "ok"})
 			})
+
+			// Trigger a manual feed refresh
+			sources.POST("/refresh", RefreshFeeds)
 		}
 
 		// Group routes (protected)
