@@ -208,9 +208,14 @@ func GetSettings(c *gin.Context) {
 		feedInterval = 15
 	}
 
+	autoSummary := user.AutoSummary
+	if !autoSummary {
+		autoSummary = true
+	}
+
 	c.JSON(http.StatusOK, Settings{
 		FeedUpdateInterval: feedInterval,
-		AutoSummary:        user.AutoSummary,
+		AutoSummary:        autoSummary,
 	})
 }
 
