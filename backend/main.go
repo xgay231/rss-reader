@@ -322,8 +322,11 @@ func updateFeeds() {
 		return
 	}
 
+	log.Printf("Found %d sources to process", len(sources))
+
 	fp := gofeed.NewParser()
 	for _, source := range sources {
+		log.Printf("Processing source: %s (ID: %s, UserID: %s)", source.Name, source.ID.Hex(), source.UserID.Hex())
 		feed, err := fp.ParseURL(source.URL)
 		if err != nil {
 			log.Printf("Failed to parse feed %s: %v", source.URL, err)
@@ -374,20 +377,27 @@ func updateFeeds() {
 
 				// Auto-generate summaries for new articles if user has autoSummary enabled
 				go func(source FeedSource, insertedIDs []interface{}) {
+					log.Printf("[AutoSummary] Starting for source %s with %d articles", source.Name, len(insertedIDs))
+
 					// Check if user has autoSummary enabled
 					var user struct {
 						AutoSummary bool `bson:"autoSummary"`
 					}
 					err := db.UserCollection.FindOne(context.Background(), bson.M{"_id": source.UserID}).Decode(&user)
 					if err != nil {
-						log.Printf("Failed to check autoSummary setting for user %s: %v", source.UserID.Hex(), err)
+						log.Printf("[AutoSummary] Failed to check autoSummary setting for user %s: %v", source.UserID.Hex(), err)
 						return
 					}
 
+					log.Printf("[AutoSummary] User %s autoSummary setting: %v", source.UserID.Hex(), user.AutoSummary)
+
 					// If autoSummary is disabled, skip all articles
 					if !user.AutoSummary {
+						log.Printf("[AutoSummary] autoSummary is false, skipping all articles for source %s", source.Name)
 						return
 					}
+
+					log.Printf("[AutoSummary] Starting summary generation for %d articles", len(insertedIDs))
 
 					// Semaphore to limit concurrent goroutines to 5
 					semaphore := make(chan struct{}, 5)
@@ -401,10 +411,12 @@ func updateFeeds() {
 						go func(aid primitive.ObjectID) {
 							defer wg.Done()
 							defer func() { <-semaphore }() // Release semaphore
+							log.Printf("[AutoSummary] Calling generateSummary for article %s", aid.Hex())
 							generateSummary(aid, source.UserID)
 						}(articleID)
 					}
 					wg.Wait()
+					log.Printf("[AutoSummary] Finished for source %s", source.Name)
 				}(source, result.InsertedIDs)
 			}
 		}
