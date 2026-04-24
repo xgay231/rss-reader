@@ -25,7 +25,7 @@ const draggingId = ref(null);
 const dragOverType = ref(null);
 const dragOverId = ref(null);
 
-const emit = defineEmits(['source-selected']);
+const emit = defineEmits(['source-selected', 'open-settings']);
 
 // Close menu when clicking outside
 const handleClickOutside = (event) => {
@@ -428,6 +428,21 @@ const handleLogout = async () => {
   await auth.logout();
 };
 
+const handleRefresh = async () => {
+  try {
+    await fetchWithAuth('/api/sources/refresh', { method: 'POST' });
+    // Optionally refresh the current source list
+    if (selectedSourceId.value) {
+      const source = sources.value.find(s => s.id === selectedSourceId.value);
+      if (source) {
+        emit('source-selected', source);
+      }
+    }
+  } catch (error) {
+    console.error('Failed to refresh feeds:', error);
+  }
+};
+
 // Close user menu when clicking outside
 const handleUserMenuClickOutside = (event) => {
   if (!event.target.closest('.user-menu-container')) {
@@ -439,6 +454,11 @@ const handleUserMenuClickOutside = (event) => {
 <template>
   <div class="source-list-container">
     <h2>Feeds</h2>
+    <div class="header-actions">
+      <button class="refresh-btn" @click="handleRefresh" title="立即更新">
+        ↻
+      </button>
+    </div>
     <div class="add-source-form">
       <input
         type="text"
@@ -603,7 +623,7 @@ const handleUserMenuClickOutside = (event) => {
         <span class="user-menu-arrow">{{ showUserMenu ? '▲' : '▼' }}</span>
       </div>
       <div class="user-dropdown" v-if="showUserMenu">
-        <div class="menu-item" @click="showUserMenu = false">设置</div>
+        <div class="menu-item" @click="$emit('open-settings')">设置</div>
         <div class="menu-item danger" @click="handleLogout">退出登录</div>
       </div>
     </div>
@@ -624,6 +644,27 @@ h2 {
   margin-top: 0;
   font-size: 1.2rem;
   color: var(--color-text-primary);
+}
+
+.header-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.5rem;
+}
+
+.refresh-btn {
+  padding: 0.25rem 0.5rem;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1.2rem;
+  color: var(--color-text-secondary);
+}
+
+.refresh-btn:hover {
+  background: var(--color-bg-item-hover);
+  color: var(--color-accent);
 }
 
 .add-source-form, .add-group-form {
