@@ -198,8 +198,8 @@ func GetSettings(c *gin.Context) {
 	}
 
 	var user struct {
-		FeedUpdateInterval int  `bson:"feedUpdateInterval"`
-		AutoSummary        bool `bson:"autoSummary"`
+		FeedUpdateInterval int   `bson:"feedUpdateInterval"`
+		AutoSummary        *bool `bson:"autoSummary"` // pointer to distinguish "not set" from "explicitly false"
 	}
 
 	err := db.UserCollection.FindOne(context.Background(), bson.M{"_id": userID}).Decode(&user)
@@ -218,8 +218,10 @@ func GetSettings(c *gin.Context) {
 		needsUpdate = true
 	}
 
-	if !autoSummary {
-		autoSummary = true
+	if autoSummary == nil {
+		// Field not set, use default true
+		autoSummary = new(bool)
+		*autoSummary = true
 		needsUpdate = true
 	}
 
@@ -230,14 +232,14 @@ func GetSettings(c *gin.Context) {
 			bson.M{"_id": userID},
 			bson.M{"$set": bson.M{
 				"feedUpdateInterval": feedInterval,
-				"autoSummary":        autoSummary,
+				"autoSummary":        *autoSummary,
 			}},
 		)
 	}
 
 	c.JSON(http.StatusOK, Settings{
 		FeedUpdateInterval: feedInterval,
-		AutoSummary:        autoSummary,
+		AutoSummary:        *autoSummary,
 	})
 }
 
