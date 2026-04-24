@@ -333,93 +333,7 @@ func updateFeeds() {
 			continue // Move to the next source
 		}
 
-		var newArticles []interface{}
-		for _, item := range feed.Items {
-			// Check if article already exists
-			filter := bson.M{"guid": item.GUID, "sourceId": source.ID}
-			err := db.ArticleCollection.FindOne(ctx, filter).Err()
-
-			if err == mongo.ErrNoDocuments {
-				// Article is new, add it to the list
-				content := item.Content
-				if content == "" {
-					content = item.Description
-				}
-				var publishedAt *time.Time
-				if item.PublishedParsed != nil {
-					publishedAt = item.PublishedParsed
-				}
-				article := Article{
-					SourceID:    source.ID,
-					UserID:      source.UserID, // Preserve the userId from source
-					GUID:        item.GUID,
-					Title:       item.Title,
-					URL:         item.Link,
-					Description: item.Description,
-					Content:     content,
-					PublishedAt: publishedAt,
-					ReadStatus:  "unread",
-				}
-				newArticles = append(newArticles, article)
-			} else if err != nil {
-				// An actual error occurred during the check
-				log.Printf("Error checking for article existence %s: %v", item.GUID, err)
-			}
-		}
-
-		if len(newArticles) > 0 {
-			opts := options.InsertMany().SetOrdered(false)
-			result, err := db.ArticleCollection.InsertMany(ctx, newArticles, opts)
-			if err != nil {
-				log.Printf("Failed to insert %d new articles for source %s: %v", len(newArticles), source.Name, err)
-			} else {
-				log.Printf("Inserted %d new articles for source %s", len(newArticles), source.Name)
-
-				// Auto-generate summaries for new articles if user has autoSummary enabled
-				go func(source FeedSource, insertedIDs []interface{}) {
-					log.Printf("[AutoSummary] Starting for source %s with %d articles", source.Name, len(insertedIDs))
-
-					// Check if user has autoSummary enabled
-					var user struct {
-						AutoSummary bool `bson:"autoSummary"`
-					}
-					err := db.UserCollection.FindOne(context.Background(), bson.M{"_id": source.UserID}).Decode(&user)
-					if err != nil {
-						log.Printf("[AutoSummary] Failed to check autoSummary setting for user %s: %v", source.UserID.Hex(), err)
-						return
-					}
-
-					log.Printf("[AutoSummary] User %s autoSummary setting: %v", source.UserID.Hex(), user.AutoSummary)
-
-					// If autoSummary is disabled, skip all articles
-					if !user.AutoSummary {
-						log.Printf("[AutoSummary] autoSummary is false, skipping all articles for source %s", source.Name)
-						return
-					}
-
-					log.Printf("[AutoSummary] Starting summary generation for %d articles", len(insertedIDs))
-
-					// Semaphore to limit concurrent goroutines to 5
-					semaphore := make(chan struct{}, 5)
-					var wg sync.WaitGroup
-
-					// Generate summary for each new article
-					for _, id := range insertedIDs {
-						articleID := id.(primitive.ObjectID)
-						wg.Add(1)
-						semaphore <- struct{}{} // Acquire semaphore
-						go func(aid primitive.ObjectID) {
-							defer wg.Done()
-							defer func() { <-semaphore }() // Release semaphore
-							log.Printf("[AutoSummary] Calling generateSummary for article %s", aid.Hex())
-							generateSummary(aid, source.UserID)
-						}(articleID)
-					}
-					wg.Wait()
-					log.Printf("[AutoSummary] Finished for source %s", source.Name)
-				}(source, result.InsertedIDs)
-			}
-		}
+		insertArticlesAndGenerateSummary(source, feed.Items, ctx)
 	}
 	log.Println("Feed update process finished.")
 }
@@ -428,6 +342,91 @@ func updateFeeds() {
 func RefreshFeeds(c *gin.Context) {
 	go updateFeeds()
 	c.JSON(http.StatusOK, gin.H{"message": "Feed refresh triggered"})
+}
+
+// insertArticlesAndGenerateSummary inserts new articles from a feed and triggers auto-summary
+// Returns the IDs of newly inserted articles
+func insertArticlesAndGenerateSummary(source FeedSource, items []*gofeed.Item, ctx context.Context) []interface{} {
+	var newArticles []interface{}
+
+	for _, item := range items {
+		// Check if article already exists
+		filter := bson.M{"guid": item.GUID, "sourceId": source.ID}
+		err := db.ArticleCollection.FindOne(ctx, filter).Err()
+		if err == mongo.ErrNoDocuments {
+			// Article is new, add it to the list
+			content := item.Content
+			if content == "" {
+				content = item.Description
+			}
+			var publishedAt *time.Time
+			if item.PublishedParsed != nil {
+				publishedAt = item.PublishedParsed
+			}
+			article := Article{
+				SourceID:    source.ID,
+				UserID:      source.UserID,
+				GUID:        item.GUID,
+				Title:       item.Title,
+				URL:         item.Link,
+				Description: item.Description,
+				Content:     content,
+				PublishedAt: publishedAt,
+				ReadStatus:  "unread",
+			}
+			newArticles = append(newArticles, article)
+		}
+	}
+
+	if len(newArticles) == 0 {
+		return nil
+	}
+
+	// Insert articles
+	opts := options.InsertMany().SetOrdered(false)
+	result, err := db.ArticleCollection.InsertMany(ctx, newArticles, opts)
+	if err != nil {
+		log.Printf("Failed to insert %d new articles for source %s: %v", len(newArticles), source.Name, err)
+		return nil
+	}
+
+	log.Printf("Inserted %d new articles for source %s", len(newArticles), source.Name)
+
+	// Auto-generate summaries for new articles if user has autoSummary enabled
+	go func(source FeedSource, insertedIDs []interface{}) {
+		// Check if user has autoSummary enabled
+		var user struct {
+			AutoSummary bool `bson:"autoSummary"`
+		}
+		err := db.UserCollection.FindOne(context.Background(), bson.M{"_id": source.UserID}).Decode(&user)
+		if err != nil {
+			log.Printf("[AutoSummary] Failed to check autoSummary setting for user %s: %v", source.UserID.Hex(), err)
+			return
+		}
+
+		// If autoSummary is disabled, skip
+		if !user.AutoSummary {
+			return
+		}
+
+		// Semaphore to limit concurrent goroutines to 5
+		semaphore := make(chan struct{}, 5)
+		var wg sync.WaitGroup
+
+		for _, id := range insertedIDs {
+			articleID := id.(primitive.ObjectID)
+			wg.Add(1)
+			semaphore <- struct{}{}
+			go func(aid primitive.ObjectID) {
+				defer wg.Done()
+				defer func() { <-semaphore }()
+				generateSummary(aid, source.UserID)
+			}(articleID)
+		}
+		wg.Wait()
+	}(source, result.InsertedIDs)
+
+	return result.InsertedIDs
 }
 
 // startFeedWorker starts the background feed update worker with dynamic interval support
@@ -562,41 +561,10 @@ func main() {
 					}
 				}
 
-				// Insert articles with deduplication
-				for _, item := range feed.Items {
-					content := item.Content
-					if content == "" {
-						content = item.Description
-					}
-					var publishedAt *time.Time
-					if item.PublishedParsed != nil {
-						publishedAt = item.PublishedParsed
-					}
+				// Insert articles and trigger auto-summary using shared function
+				newSource.UserID = userID
+				insertArticlesAndGenerateSummary(newSource, feed.Items, context.Background())
 
-					// Check if article already exists for this source
-					filter := bson.M{"guid": item.GUID, "sourceId": sourceID}
-					err := db.ArticleCollection.FindOne(context.Background(), filter).Err()
-					if err == mongo.ErrNoDocuments {
-						// Article doesn't exist, insert it
-						article := Article{
-							UserID:      userID,
-							SourceID:    sourceID,
-							GUID:        item.GUID,
-							Title:       item.Title,
-							URL:         item.Link,
-							Description: item.Description,
-							Content:     content,
-							PublishedAt: publishedAt,
-							ReadStatus:  "unread",
-						}
-						_, insertErr := db.ArticleCollection.InsertOne(context.Background(), article)
-						if insertErr != nil {
-							log.Printf("Failed to insert article %s: %v", item.GUID, insertErr)
-						}
-					}
-				}
-
-				newSource.ID = sourceID
 				c.JSON(201, newSource)
 			})
 
