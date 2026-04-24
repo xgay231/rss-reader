@@ -45,18 +45,22 @@ func Register(c *gin.Context) {
 
 	// Create user
 	user := struct {
-		ID           primitive.ObjectID `bson:"_id,omitempty"`
-		Email        string             `bson:"email"`
-		Username     string             `bson:"username"`
-		PasswordHash string             `bson:"passwordHash"`
-		CreatedAt    time.Time          `bson:"createdAt"`
-		UpdatedAt    time.Time          `bson:"updatedAt"`
+		ID                primitive.ObjectID `bson:"_id,omitempty"`
+		Email             string             `bson:"email"`
+		Username          string             `bson:"username"`
+		PasswordHash      string             `bson:"passwordHash"`
+		CreatedAt         time.Time         `bson:"createdAt"`
+		UpdatedAt         time.Time         `bson:"updatedAt"`
+		FeedUpdateInterval int              `bson:"feedUpdateInterval"` // default 15
+		AutoSummary       bool              `bson:"autoSummary"`        // default true
 	}{
-		Email:        json.Email,
-		Username:     json.Username,
-		PasswordHash: string(hashedPassword),
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		Email:              json.Email,
+		Username:           json.Username,
+		PasswordHash:      string(hashedPassword),
+		CreatedAt:         time.Now(),
+		UpdatedAt:         time.Now(),
+		FeedUpdateInterval: 15, // default 15 minutes
+		AutoSummary:       true, // default true
 	}
 
 	result, err := db.UserCollection.InsertOne(context.Background(), user)
