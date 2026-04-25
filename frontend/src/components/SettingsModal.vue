@@ -14,6 +14,12 @@ const emit = defineEmits(["close"]);
 const intervalOption = ref("15");
 const customInterval = ref(15);
 const autoSummary = ref(true);
+const dailySummaryEnabled = ref(false);
+const dailySummaryTime = ref("09:00");
+const dailySummaryEmail = ref("");
+const smtpPassword = ref("");
+const sendingSummary = ref(false);
+const summaryMessage = ref("");
 const error = ref("");
 const loading = ref(false);
 const saving = ref(false);
@@ -45,7 +51,10 @@ const fetchSettings = async () => {
         intervalOption.value = "custom";
         customInterval.value = interval;
       }
-      autoSummary.value = data.autoSummary;
+      autoSummary.value = data.autoSummary ?? true;
+      dailySummaryEnabled.value = data.dailySummaryEnabled ?? false;
+      dailySummaryTime.value = data.dailySummaryTime ?? "09:00";
+      dailySummaryEmail.value = data.dailySummaryEmail ?? "";
     } else {
       error.value = "Failed to load settings";
     }
@@ -82,6 +91,10 @@ const handleSave = async () => {
       body: JSON.stringify({
         feedUpdateInterval,
         autoSummary: autoSummary.value,
+        dailySummaryEnabled: dailySummaryEnabled.value,
+        dailySummaryTime: dailySummaryTime.value,
+        dailySummaryEmail: dailySummaryEmail.value,
+        smtpPassword: smtpPassword.value || undefined,
       }),
     });
 
@@ -95,6 +108,29 @@ const handleSave = async () => {
     console.error(e);
   } finally {
     saving.value = false;
+  }
+};
+
+const handleSendSummary = async () => {
+  sendingSummary.value = true;
+  summaryMessage.value = "";
+
+  try {
+    const response = await fetchWithAuth("/api/daily-summary/send", {
+      method: "POST",
+    });
+
+    const data = await response.json();
+    if (response.ok) {
+      summaryMessage.value = "每日总结发送中，请稍候...";
+    } else {
+      summaryMessage.value = data.error || "发送失败";
+    }
+  } catch (e) {
+    summaryMessage.value = "发送失败";
+    console.error(e);
+  } finally {
+    sendingSummary.value = false;
   }
 };
 
@@ -155,6 +191,61 @@ const handleClose = () => {
                 <input type="checkbox" v-model="autoSummary" />
                 <span>对新文章自动生成摘要</span>
               </label>
+            </div>
+          </div>
+
+          <hr class="divider" />
+
+          <div class="setting-group">
+            <label class="setting-label">每日总结</label>
+            <div class="checkbox-option">
+              <label>
+                <input type="checkbox" v-model="dailySummaryEnabled" />
+                <span>启用每日总结邮件</span>
+              </label>
+            </div>
+          </div>
+
+          <div v-if="dailySummaryEnabled" class="daily-summary-settings">
+            <div class="setting-row">
+              <label>发送时间：</label>
+              <input
+                type="time"
+                v-model="dailySummaryTime"
+                class="time-input"
+              />
+            </div>
+
+            <div class="setting-row">
+              <label>邮箱地址：</label>
+              <input
+                type="email"
+                v-model="dailySummaryEmail"
+                placeholder="接收总结的邮箱"
+                class="text-input"
+              />
+            </div>
+
+            <div class="setting-row">
+              <label>SMTP 密码：</label>
+              <input
+                type="password"
+                v-model="smtpPassword"
+                placeholder="邮箱 SMTP 授权码"
+                class="text-input"
+              />
+              <p class="hint">QQ邮箱可使用授权码，其他邮箱请查看 SMTP 设置</p>
+            </div>
+
+            <div class="setting-row">
+              <button
+                class="btn-send-summary"
+                @click="handleSendSummary"
+                :disabled="sendingSummary"
+              >
+                {{ sendingSummary ? "发送中..." : "立即发送" }}
+              </button>
+              <span v-if="summaryMessage" class="summary-message">{{ summaryMessage }}</span>
             </div>
           </div>
 
@@ -359,5 +450,74 @@ const handleClose = () => {
 .btn-save:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.daily-summary-settings {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.setting-row label {
+  min-width: 70px;
+  color: #333;
+}
+
+.time-input,
+.text-input {
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.95rem;
+}
+
+.time-input {
+  width: 100px;
+}
+
+.text-input {
+  flex: 1;
+  min-width: 180px;
+}
+
+.hint {
+  width: 100%;
+  margin: 0.25rem 0 0 70px;
+  font-size: 0.8rem;
+  color: #888;
+}
+
+.btn-send-summary {
+  padding: 0.5rem 1rem;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.btn-send-summary:hover:not(:disabled) {
+  background: #218838;
+}
+
+.btn-send-summary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.summary-message {
+  margin-left: 0.5rem;
+  font-size: 0.9rem;
+  color: #666;
 }
 </style>
