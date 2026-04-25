@@ -606,6 +606,8 @@ func UpdateDailySummarySettings(c *gin.Context) {
 		return
 	}
 
+	log.Printf("[DailySummary] UpdateSettings called by user %s", userID.Hex())
+
 	var json struct {
 		Enabled      *bool   `json:"enabled"`
 		Time         *string `json:"time"`
@@ -614,9 +616,12 @@ func UpdateDailySummarySettings(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&json); err != nil {
+		log.Printf("[DailySummary] UpdateSettings bind error: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	log.Printf("[DailySummary] UpdateSettings received: enabled=%v, time=%s, email=%s", json.Enabled, json.Time, json.Email)
 
 	update := bson.M{}
 	if json.Enabled != nil {
@@ -626,6 +631,7 @@ func UpdateDailySummarySettings(c *gin.Context) {
 		// Validate time format HH:MM (e.g., "09:00")
 		matched, _ := regexp.MatchString(`^([01]\d|2[0-3]):([0-5]\d)$`, *json.Time)
 		if !matched {
+			log.Printf("[DailySummary] UpdateSettings invalid time format: %s", *json.Time)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid time format. Expected HH:MM (e.g., 09:00)"})
 			return
 		}
@@ -639,9 +645,12 @@ func UpdateDailySummarySettings(c *gin.Context) {
 	}
 
 	if len(update) == 0 {
+		log.Printf("[DailySummary] UpdateSettings no fields to update")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No settings to update"})
 		return
 	}
+
+	log.Printf("[DailySummary] UpdateSettings updating: %+v", update)
 
 	_, err := db.UserCollection.UpdateOne(
 		context.Background(),
@@ -649,10 +658,12 @@ func UpdateDailySummarySettings(c *gin.Context) {
 		bson.M{"$set": update},
 	)
 	if err != nil {
+		log.Printf("[DailySummary] UpdateSettings db error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update settings"})
 		return
 	}
 
+	log.Printf("[DailySummary] UpdateSettings success")
 	c.JSON(http.StatusOK, gin.H{"message": "Settings updated successfully"})
 }
 
