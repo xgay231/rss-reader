@@ -62,9 +62,9 @@ const fetchSettings = async () => {
 
     if (dailySummaryRes.ok) {
       const dailyData = await dailySummaryRes.json();
-      dailySummaryEnabled.value = dailyData.dailySummaryEnabled ?? false;
-      dailySummaryTime.value = dailyData.dailySummaryTime ?? "09:00";
-      dailySummaryEmail.value = dailyData.dailySummaryEmail ?? "";
+      dailySummaryEnabled.value = dailyData.enabled ?? false;
+      dailySummaryTime.value = dailyData.time ?? "09:00";
+      dailySummaryEmail.value = dailyData.email ?? "";
     } else {
       error.value = "Failed to load daily summary settings";
     }
