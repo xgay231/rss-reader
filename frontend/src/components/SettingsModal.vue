@@ -38,9 +38,13 @@ const fetchSettings = async () => {
   error.value = "";
 
   try {
-    const response = await fetchWithAuth("/api/settings");
-    if (response.ok) {
-      const data = await response.json();
+    const [settingsRes, dailySummaryRes] = await Promise.all([
+      fetchWithAuth("/api/settings"),
+      fetchWithAuth("/api/daily-summary/settings"),
+    ]);
+
+    if (settingsRes.ok) {
+      const data = await settingsRes.json();
       const interval = data.feedUpdateInterval;
 
       if (interval === 15) {
@@ -52,11 +56,17 @@ const fetchSettings = async () => {
         customInterval.value = interval;
       }
       autoSummary.value = data.autoSummary ?? true;
-      dailySummaryEnabled.value = data.dailySummaryEnabled ?? false;
-      dailySummaryTime.value = data.dailySummaryTime ?? "09:00";
-      dailySummaryEmail.value = data.dailySummaryEmail ?? "";
     } else {
       error.value = "Failed to load settings";
+    }
+
+    if (dailySummaryRes.ok) {
+      const dailyData = await dailySummaryRes.json();
+      dailySummaryEnabled.value = dailyData.dailySummaryEnabled ?? false;
+      dailySummaryTime.value = dailyData.dailySummaryTime ?? "09:00";
+      dailySummaryEmail.value = dailyData.dailySummaryEmail ?? "";
+    } else {
+      error.value = "Failed to load daily summary settings";
     }
   } catch (e) {
     error.value = "Failed to load settings";
