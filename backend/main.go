@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/smtp"
 	"os"
 	"regexp"
 	"strconv"
@@ -18,6 +17,7 @@ import (
 	"rss-reader/backend/middleware"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-mail/mail/v2"
 	"github.com/joho/godotenv"
 	"github.com/mmcdole/gofeed"
 	"github.com/robfig/cron/v3"
@@ -486,14 +486,17 @@ func sendDailySummaryEmail(userID primitive.ObjectID) error {
 		}
 	}
 
-	// 构建邮件内容
-	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: =?UTF-8?B?5pel5pys6Kqe5a2m5pyf5Y+w77yBIOWQq+mKjA==?=\r\n"+
-		"Content-Type: text/html; charset=UTF-8\r\n\r\n%s",
-		user.DailySummaryEmail, user.DailySummaryEmail, htmlBody)
+	// 创建邮件消息
+	msg := mail.NewMessage()
+	msg.SetHeader("From", user.DailySummaryEmail)
+	msg.SetHeader("To", user.DailySummaryEmail)
+	msg.SetHeader("Subject", "每日文章总结")
+	msg.SetBody("text/html", htmlBody)
 
-	// 使用 smtp.SendMail 发送
-	auth := smtp.PlainAuth("", user.DailySummaryEmail, user.SmtpPassword, host)
-	err = smtp.SendMail(fmt.Sprintf("%s:%d", host, port), auth, user.DailySummaryEmail, []string{user.DailySummaryEmail}, []byte(msg))
+	// 创建 Dialer 并发送
+	dialer := mail.NewDialer(host, port, user.DailySummaryEmail, user.SmtpPassword)
+	dialer.StartTLSPolicy = mail.MandatoryStartTLS
+	err = dialer.DialAndSend(msg)
 	if err != nil {
 		return fmt.Errorf("failed to send email: %v", err)
 	}
