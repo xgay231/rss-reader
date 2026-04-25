@@ -39,11 +39,14 @@ const markAllAsRead = async () => {
 
 // Filtered articles based on filter state
 const filteredArticles = computed(() => {
-  return props.articles.filter((article) => {
-    if (article.readStatus === 'read' && !showRead.value) return false;
-    if (article.readStatus === 'unread' && !showUnread.value) return false;
-    return true;
-  });
+  return props.articles
+    .slice()
+    .sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt))
+    .filter((article) => {
+      if (article.readStatus === 'read' && !showRead.value) return false;
+      if (article.readStatus === 'unread' && !showUnread.value) return false;
+      return true;
+    });
 });
 
 const formatTime = (timeString) => {
