@@ -908,6 +908,7 @@ func main() {
 					return
 				}
 				sourceID := res.InsertedID.(primitive.ObjectID)
+				newSource.ID = sourceID
 
 				// Fix duplicate starred articles issue - move orphaned starred articles to new source BEFORE checking for duplicates
 				for _, item := range feed.Items {
