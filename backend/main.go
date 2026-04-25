@@ -18,6 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/mmcdole/gofeed"
+	"github.com/robfig/cron/v3"
 	openai "github.com/sashabaranov/go-openai"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -29,6 +30,9 @@ var aiClient *openai.Client
 var aiModelName string
 var feedUpdateInterval = 15 * time.Minute // default 15 minutes
 var feedUpdateIntervalMins = 15           // interval in minutes for dynamic updates
+
+// ctx and cancel are used for graceful shutdown of background tasks
+var ctx, stop = context.WithCancel(context.Background())
 
 // updateTicker controls the feed update ticker
 var updateTicker *time.Ticker
@@ -476,7 +480,28 @@ func SendDailySummary(c *gin.Context) {
 		return
 	}
 
-	// 异步发送，不阻塞响应
+	// 同步检查配置是否有效，再决定是否启动异步发送
+	var user struct {
+		DailySummaryEnabled bool   `bson:"dailySummaryEnabled"`
+		DailySummaryEmail   string `bson:"dailySummaryEmail"`
+		SmtpPassword        string `bson:"smtpPassword"`
+	}
+	err := db.UserCollection.FindOne(context.Background(), bson.M{"_id": userID}).Decode(&user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check settings"})
+		return
+	}
+
+	if !user.DailySummaryEnabled {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "每日总结未启用"})
+		return
+	}
+	if user.DailySummaryEmail == "" || user.SmtpPassword == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "邮箱或SMTP密码未配置"})
+		return
+	}
+
+	// 配置有效，异步发送
 	go func() {
 		if err := sendDailySummaryEmail(userID); err != nil {
 			log.Printf("[DailySummary] Failed to send daily summary for user %s: %v", userID.Hex(), err)
@@ -487,7 +512,7 @@ func SendDailySummary(c *gin.Context) {
 
 	c.JSON(http.StatusOK, DailySummarySendResult{
 		Success: true,
-		Message: "每日总结已加入发送队列",
+		Message: "每日总结发送中...",
 	})
 }
 
@@ -1435,5 +1460,60 @@ func main() {
 		}
 	}
 
+	// 初始化每日总结定时调度器
+	initDailySummaryScheduler()
+
 	router.Run(":8080") // listen and serve on 0.0.0.0:8080
+}
+
+// initDailySummaryScheduler 初始化每日总结定时调度器
+func initDailySummaryScheduler() {
+	c := cron.New()
+
+	// 每分钟检查一次
+	c.AddFunc("* * * * *", func() {
+		checkAndSendDailySummaries()
+	})
+
+	c.Start()
+	log.Println("Daily summary scheduler started")
+
+	// 确保进程退出时停止 cron
+	go func() {
+		<-ctx.Done()
+		c.Stop()
+	}()
+}
+
+// checkAndSendDailySummaries 检查所有用户是否需要发送每日总结
+func checkAndSendDailySummaries() {
+	now := time.Now()
+	currentTime := now.Format("15:04") // 精确到分钟
+
+	// 查询所有启用了每日总结的用户
+	cursor, err := db.UserCollection.Find(context.Background(), bson.M{
+		"dailySummaryEnabled": true,
+		"dailySummaryTime":    currentTime,
+	})
+	if err != nil {
+		log.Printf("[DailySummary] Failed to find users: %v", err)
+		return
+	}
+	defer cursor.Close(context.Background())
+
+	for cursor.Next(context.Background()) {
+		var user struct {
+			ID primitive.ObjectID `bson:"_id"`
+		}
+		if err := cursor.Decode(&user); err != nil {
+			continue
+		}
+
+		log.Printf("[DailySummary] Triggering daily summary for user %s", user.ID.Hex())
+		go func(uid primitive.ObjectID) {
+			if err := sendDailySummaryEmail(uid); err != nil {
+				log.Printf("[DailySummary] Failed to send for user %s: %v", uid.Hex(), err)
+			}
+		}(user.ID)
+	}
 }
