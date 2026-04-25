@@ -41,7 +41,12 @@ const markAllAsRead = async () => {
 const filteredArticles = computed(() => {
   return props.articles
     .slice()
-    .sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt))
+    .sort((a, b) => {
+      const dateA = new Date(a.publishedAt).getTime();
+      const dateB = new Date(b.publishedAt).getTime();
+      if (isNaN(dateA) || isNaN(dateB)) return 0;
+      return dateB - dateA;
+    })
     .filter((article) => {
       if (article.readStatus === 'read' && !showRead.value) return false;
       if (article.readStatus === 'unread' && !showUnread.value) return false;
