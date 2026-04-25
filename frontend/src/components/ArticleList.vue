@@ -21,7 +21,7 @@ const selectArticle = (article) => {
 };
 
 // Filter state
-const showRead = ref(true);
+const showRead = ref(false);
 const showUnread = ref(true);
 
 const toggleShowRead = () => {
