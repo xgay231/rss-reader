@@ -403,6 +403,10 @@ func generateMergedSummary(articles []Article) (string, error) {
 		return "", err
 	}
 
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("no summary content returned from AI")
+	}
+
 	return strings.TrimSpace(resp.Choices[0].Message.Content), nil
 }
 
@@ -619,6 +623,12 @@ func UpdateDailySummarySettings(c *gin.Context) {
 		update["dailySummaryEnabled"] = *json.Enabled
 	}
 	if json.Time != nil {
+		// Validate time format HH:MM (e.g., "09:00")
+		matched, _ := regexp.MatchString(`^([01]\d|2[0-3]):([0-5]\d)$`, *json.Time)
+		if !matched {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid time format. Expected HH:MM (e.g., 09:00)"})
+			return
+		}
 		update["dailySummaryTime"] = *json.Time
 	}
 	if json.Email != nil {
