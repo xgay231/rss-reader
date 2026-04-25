@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/smtp"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +32,13 @@ var aiClient *openai.Client
 var aiModelName string
 var feedUpdateInterval = 15 * time.Minute // default 15 minutes
 var feedUpdateIntervalMins = 15           // interval in minutes for dynamic updates
+
+// SMTP config
+var (
+	smtpHost = os.Getenv("SMTP_HOST")
+	smtpPort = os.Getenv("SMTP_PORT")
+	smtpUser = os.Getenv("SMTP_USER")
+)
 
 // ctx and cancel are used for graceful shutdown of background tasks
 var ctx, stop = context.WithCancel(context.Background())
@@ -448,7 +457,7 @@ func sendDailySummaryEmail(userID primitive.ObjectID) error {
   <meta charset="UTF-8">
 </head>
 <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <h2 style="color: #333;">📬 每日文章总结</h2>
+  <h2 style="color: #333;">每日文章总结</h2>
   <p style="color: #666;">%s</p>
   <hr style="border: 1px solid #eee;">
 
@@ -465,10 +474,31 @@ func sendDailySummaryEmail(userID primitive.ObjectID) error {
 </body>
 </html>`, today, len(articles), summary, articleListHTML.String())
 
-	// 记录日志（实际 SMTP 发送将在 Task 6 实现）
-	log.Printf("[DailySummary] Email prepared for user %s: to=%s, articles=%d, html_length=%d",
-		userID.Hex(), user.DailySummaryEmail, len(articles), len(htmlBody))
+	// 发送邮件
+	host := smtpHost
+	if host == "" {
+		host = "smtp.qq.com" // 默认使用 QQ 邮箱 SMTP
+	}
+	port := 587 // 默认 TLS 端口
+	if smtpPort != "" {
+		if p, err := strconv.Atoi(smtpPort); err == nil {
+			port = p
+		}
+	}
 
+	// 构建邮件内容
+	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: =?UTF-8?B?5pel5pys6Kqe5a2m5pyf5Y+w77yBIOWQq+mKjA==?=\r\n"+
+		"Content-Type: text/html; charset=UTF-8\r\n\r\n%s",
+		user.DailySummaryEmail, user.DailySummaryEmail, htmlBody)
+
+	// 使用 smtp.SendMail 发送
+	auth := smtp.PlainAuth("", user.DailySummaryEmail, user.SmtpPassword, host)
+	err = smtp.SendMail(fmt.Sprintf("%s:%d", host, port), auth, user.DailySummaryEmail, []string{user.DailySummaryEmail}, []byte(msg))
+	if err != nil {
+		return fmt.Errorf("failed to send email: %v", err)
+	}
+
+	log.Printf("[DailySummary] Email sent for user %s: to=%s", userID.Hex(), user.DailySummaryEmail)
 	return nil
 }
 
