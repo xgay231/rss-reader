@@ -407,7 +407,7 @@ func generateMergedSummary(articles []Article) (string, error) {
 		return "", fmt.Errorf("no summary content returned from AI")
 	}
 
-	return strings.TrimSpace(resp.Choices[0].Message.Content), nil
+	return removeThinkTags(resp.Choices[0].Message.Content), nil
 }
 
 // sendDailySummaryEmail 发送每日总结邮件
