@@ -344,20 +344,22 @@ func getTodayArticles(userID primitive.ObjectID) ([]Article, error) {
 	return articles, nil
 }
 
-// generateMergedSummary 调用 AI 将多篇文章聚合成一段摘要
+// generateMergedSummary calls AI to merge multiple articles into a single summary
+// Returns (summary, error). If there are no articles, returns ("", nil).
+// If AI client is not available, returns ( "", error).
 func generateMergedSummary(articles []Article) (string, error) {
 	if aiClient == nil {
-		return "AI client not available", nil
+		return "", fmt.Errorf("AI client not available")
 	}
 
 	if len(articles) == 0 {
-		return "今日暂无新文章", nil
+		return "", nil
 	}
 
-	// 构建文章列表
-	var articleList string
+	// Build article list using strings.Builder for efficiency
+	var builder strings.Builder
 	for i, article := range articles {
-		articleList += fmt.Sprintf("%d. \"%s\" - 来源: %s\n", i+1, article.Title, article.URL)
+		builder.WriteString(fmt.Sprintf("%d. \"%s\" - 来源: %s\n", i+1, article.Title, article.URL))
 	}
 
 	prompt := fmt.Sprintf(`请为用户生成一段今日文章摘要。
@@ -365,7 +367,7 @@ func generateMergedSummary(articles []Article) (string, error) {
 文章列表：
 %s
 
-请生成一段 100-200 字的合并摘要，概括今日文章的核心内容。用中文输出。`, articleList)
+请生成一段 100-200 字的合并摘要，概括今日文章的核心内容。用中文输出。`, builder.String())
 
 	resp, err := aiClient.CreateChatCompletion(
 		context.Background(),
@@ -421,16 +423,16 @@ func sendDailySummaryEmail(userID primitive.ObjectID) error {
 		return fmt.Errorf("failed to generate summary: %v", err)
 	}
 
-	// 构建文章列表 HTML
-	var articleListHTML string
+	// Build article list HTML
+	var articleListHTML strings.Builder
 	for _, article := range articles {
-		articleListHTML += fmt.Sprintf(
+		articleListHTML.WriteString(fmt.Sprintf(
 			`<li><a href="%s" style="color: #0066cc;">%s</a></li>`,
-			article.URL, article.Title)
+			article.URL, article.Title))
 	}
 
-	if articleListHTML == "" {
-		articleListHTML = "<li>今日暂无新文章</li>"
+	if articleListHTML.Len() == 0 {
+		articleListHTML.WriteString("<li>今日暂无新文章</li>")
 	}
 
 	// 构建 HTML 邮件
@@ -457,7 +459,7 @@ func sendDailySummaryEmail(userID primitive.ObjectID) error {
     %s
   </ul>
 </body>
-</html>`, today, len(articles), summary, articleListHTML)
+</html>`, today, len(articles), summary, articleListHTML.String())
 
 	// 记录日志（实际 SMTP 发送将在 Task 6 实现）
 	log.Printf("[DailySummary] Email prepared for user %s: to=%s, articles=%d, html_length=%d",
@@ -485,7 +487,7 @@ func SendDailySummary(c *gin.Context) {
 
 	c.JSON(http.StatusOK, DailySummarySendResult{
 		Success: true,
-		Message: "每日总结发送中，请稍候...",
+		Message: "每日总结已加入发送队列",
 	})
 }
 
