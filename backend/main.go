@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -176,6 +177,19 @@ type Settings struct {
 	AutoSummary       bool `json:"autoSummary"`
 }
 
+// DailySummarySettings 每日总结设置
+type DailySummarySettings struct {
+	Enabled bool   `json:"enabled"`
+	Time    string `json:"time"`    // 格式 "HH:MM"
+	Email   string `json:"email"`   // 目标邮箱
+}
+
+// DailySummarySendResult 发送结果
+type DailySummarySendResult struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
 // getUserID extracts and validates userID from context
 func getUserID(c *gin.Context) primitive.ObjectID {
 	userID, exists := c.Get("userID")
@@ -302,11 +316,272 @@ func UpdateSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Settings updated"})
 }
 
+// getTodayArticles 查询用户当天新增的文章
+func getTodayArticles(userID primitive.ObjectID) ([]Article, error) {
+	// 获取当天 0:00 到现在的文章
+	now := time.Now()
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+
+	filter := bson.M{
+		"userId": userID,
+		"publishedAt": bson.M{
+			"$gte": startOfDay,
+			"$lte": now,
+		},
+	}
+
+	cursor, err := db.ArticleCollection.Find(context.Background(), filter)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(context.Background())
+
+	var articles []Article
+	if err := cursor.All(context.Background(), &articles); err != nil {
+		return nil, err
+	}
+
+	return articles, nil
+}
+
+// generateMergedSummary 调用 AI 将多篇文章聚合成一段摘要
+func generateMergedSummary(articles []Article) (string, error) {
+	if aiClient == nil {
+		return "AI client not available", nil
+	}
+
+	if len(articles) == 0 {
+		return "今日暂无新文章", nil
+	}
+
+	// 构建文章列表
+	var articleList string
+	for i, article := range articles {
+		articleList += fmt.Sprintf("%d. \"%s\" - 来源: %s\n", i+1, article.Title, article.URL)
+	}
+
+	prompt := fmt.Sprintf(`请为用户生成一段今日文章摘要。
+
+文章列表：
+%s
+
+请生成一段 100-200 字的合并摘要，概括今日文章的核心内容。用中文输出。`, articleList)
+
+	resp, err := aiClient.CreateChatCompletion(
+		context.Background(),
+		openai.ChatCompletionRequest{
+			Model: aiModelName,
+			Messages: []openai.ChatCompletionMessage{
+				{
+					Role:    openai.ChatMessageRoleSystem,
+					Content: "你是一个帮助用户总结文章内容的助手。请用中文输出纯文本摘要，不要使用 markdown 格式，不要使用列表、标题、粗体等任何格式标记，只输出纯段落文本。",
+				},
+				{
+					Role:    openai.ChatMessageRoleUser,
+					Content: prompt,
+				},
+			},
+		},
+	)
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(resp.Choices[0].Message.Content), nil
+}
+
+// sendDailySummaryEmail 发送每日总结邮件
+func sendDailySummaryEmail(userID primitive.ObjectID) error {
+	// 获取用户信息
+	var user struct {
+		Email             string `bson:"email"`
+		DailySummaryEmail string `bson:"dailySummaryEmail"`
+		SmtpPassword      string `bson:"smtpPassword"`
+		DailySummaryTime  string `bson:"dailySummaryTime"`
+	}
+
+	err := db.UserCollection.FindOne(context.Background(), bson.M{"_id": userID}).Decode(&user)
+	if err != nil {
+		return fmt.Errorf("failed to get user: %v", err)
+	}
+
+	if user.DailySummaryEmail == "" || user.SmtpPassword == "" {
+		return fmt.Errorf("email or smtp password not configured")
+	}
+
+	// 查询当天文章
+	articles, err := getTodayArticles(userID)
+	if err != nil {
+		return fmt.Errorf("failed to get today articles: %v", err)
+	}
+
+	// 生成合并摘要
+	summary, err := generateMergedSummary(articles)
+	if err != nil {
+		return fmt.Errorf("failed to generate summary: %v", err)
+	}
+
+	// 构建文章列表 HTML
+	var articleListHTML string
+	for _, article := range articles {
+		articleListHTML += fmt.Sprintf(
+			`<li><a href="%s" style="color: #0066cc;">%s</a></li>`,
+			article.URL, article.Title)
+	}
+
+	if articleListHTML == "" {
+		articleListHTML = "<li>今日暂无新文章</li>"
+	}
+
+	// 构建 HTML 邮件
+	today := time.Now().Format("2006年1月2日")
+	htmlBody := fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+</head>
+<body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <h2 style="color: #333;">📬 每日文章总结</h2>
+  <p style="color: #666;">%s</p>
+  <hr style="border: 1px solid #eee;">
+
+  <h3 style="color: #444;">今日概览</h3>
+  <p>你今天收到了 <strong>%d</strong> 篇文章。</p>
+
+  <h3 style="color: #444;">智能摘要</h3>
+  <p style="line-height: 1.6;">%s</p>
+
+  <h3 style="color: #444;">文章列表</h3>
+  <ul style="line-height: 1.8;">
+    %s
+  </ul>
+</body>
+</html>`, today, len(articles), summary, articleListHTML)
+
+	// 记录日志（实际 SMTP 发送将在 Task 6 实现）
+	log.Printf("[DailySummary] Email prepared for user %s: to=%s, articles=%d, html_length=%d",
+		userID.Hex(), user.DailySummaryEmail, len(articles), len(htmlBody))
+
+	return nil
+}
+
+// SendDailySummary 手动触发发送每日总结
+func SendDailySummary(c *gin.Context) {
+	userID := getUserID(c)
+	if userID.IsZero() {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	// 异步发送，不阻塞响应
+	go func() {
+		if err := sendDailySummaryEmail(userID); err != nil {
+			log.Printf("[DailySummary] Failed to send daily summary for user %s: %v", userID.Hex(), err)
+		} else {
+			log.Printf("[DailySummary] Daily summary sent successfully for user %s", userID.Hex())
+		}
+	}()
+
+	c.JSON(http.StatusOK, DailySummarySendResult{
+		Success: true,
+		Message: "每日总结发送中，请稍候...",
+	})
+}
+
 // signalTickerRestart signals the background ticker to restart with new interval
 func signalTickerRestart() {
 	if tickerStopChan != nil {
 		close(tickerStopChan)
 	}
+}
+
+// GetDailySummarySettings 获取每日总结设置
+func GetDailySummarySettings(c *gin.Context) {
+	userID := getUserID(c)
+	if userID.IsZero() {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	var user struct {
+		DailySummaryEnabled bool   `bson:"dailySummaryEnabled"`
+		DailySummaryTime    string `bson:"dailySummaryTime"`
+		DailySummaryEmail   string `bson:"dailySummaryEmail"`
+	}
+
+	err := db.UserCollection.FindOne(context.Background(), bson.M{"_id": userID}).Decode(&user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get settings"})
+		return
+	}
+
+	// 返回默认值
+	enabled := user.DailySummaryEnabled
+	time := user.DailySummaryTime
+	email := user.DailySummaryEmail
+
+	if time == "" {
+		time = "09:00" // 默认早上 9 点
+	}
+
+	c.JSON(http.StatusOK, DailySummarySettings{
+		Enabled: enabled,
+		Time:    time,
+		Email:   email,
+	})
+}
+
+// UpdateDailySummarySettings 更新每日总结设置
+func UpdateDailySummarySettings(c *gin.Context) {
+	userID := getUserID(c)
+	if userID.IsZero() {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	var json struct {
+		Enabled      *bool   `json:"enabled"`
+		Time         *string `json:"time"`
+		Email        *string `json:"email"`
+		SmtpPassword *string `json:"smtpPassword"` // 不返回给前端
+	}
+
+	if err := c.ShouldBindJSON(&json); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	update := bson.M{}
+	if json.Enabled != nil {
+		update["dailySummaryEnabled"] = *json.Enabled
+	}
+	if json.Time != nil {
+		update["dailySummaryTime"] = *json.Time
+	}
+	if json.Email != nil {
+		update["dailySummaryEmail"] = *json.Email
+	}
+	if json.SmtpPassword != nil {
+		update["smtpPassword"] = *json.SmtpPassword
+	}
+
+	if len(update) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No settings to update"})
+		return
+	}
+
+	_, err := db.UserCollection.UpdateOne(
+		context.Background(),
+		bson.M{"_id": userID},
+		bson.M{"$set": update},
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update settings"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Settings updated successfully"})
 }
 
 func updateFeeds() {
@@ -491,6 +766,15 @@ func main() {
 		{
 			settings.GET("", GetSettings)
 			settings.PUT("", UpdateSettings)
+		}
+
+		// Daily summary routes (protected)
+		dailySummary := api.Group("/daily-summary")
+		dailySummary.Use(middleware.AuthMiddleware())
+		{
+			dailySummary.GET("/settings", GetDailySummarySettings)
+			dailySummary.PUT("/settings", UpdateDailySummarySettings)
+			dailySummary.POST("/send", SendDailySummary)
 		}
 
 		// Source routes (protected)
