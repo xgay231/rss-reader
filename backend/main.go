@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"html"
 	"log"
 	"net/http"
 	"os"
@@ -441,7 +442,7 @@ func sendDailySummaryEmail(userID primitive.ObjectID) error {
 	for _, article := range articles {
 		articleListHTML.WriteString(fmt.Sprintf(
 			`<li><a href="%s" style="color: #0066cc;">%s</a></li>`,
-			article.URL, article.Title))
+			article.URL, html.EscapeString(article.Title)))
 	}
 
 	if articleListHTML.Len() == 0 {
@@ -496,6 +497,7 @@ func sendDailySummaryEmail(userID primitive.ObjectID) error {
 	// 创建 Dialer 并发送
 	dialer := mail.NewDialer(host, port, user.DailySummaryEmail, user.SmtpPassword)
 	dialer.StartTLSPolicy = mail.MandatoryStartTLS
+	dialer.Timeout = 30 * time.Second
 	err = dialer.DialAndSend(msg)
 	if err != nil {
 		return fmt.Errorf("failed to send email: %v", err)
