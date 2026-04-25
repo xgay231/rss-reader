@@ -93,7 +93,8 @@ const handleSave = async () => {
   error.value = "";
 
   try {
-    const response = await fetchWithAuth("/api/settings", {
+    // 保存通用设置
+    const settingsResponse = await fetchWithAuth("/api/settings", {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -101,14 +102,24 @@ const handleSave = async () => {
       body: JSON.stringify({
         feedUpdateInterval,
         autoSummary: autoSummary.value,
-        dailySummaryEnabled: dailySummaryEnabled.value,
-        dailySummaryTime: dailySummaryTime.value,
-        dailySummaryEmail: dailySummaryEmail.value,
+      }),
+    });
+
+    // 保存每日总结设置
+    const dailySummaryResponse = await fetchWithAuth("/api/daily-summary/settings", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        enabled: dailySummaryEnabled.value,
+        time: dailySummaryTime.value,
+        email: dailySummaryEmail.value,
         smtpPassword: smtpPassword.value || undefined,
       }),
     });
 
-    if (response.ok) {
+    if (settingsResponse.ok && dailySummaryResponse.ok) {
       emit("close");
     } else {
       error.value = "Failed to save settings";
